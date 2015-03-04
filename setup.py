@@ -23,7 +23,7 @@ with open('pip-requirements.txt') as reqs:
     ]
 setup(
     name='thr',
-    version=thr.__version__,
+    version="0.0.1",
     author="Fabien MARTY",
     author_email="fabien.marty@gmail.com",
     url="https://github.com/thefab/thr",
