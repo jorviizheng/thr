@@ -5,7 +5,6 @@
 # See the LICENSE file for more information.
 
 from setuptools import setup, find_packages
-import thr
 
 DESCRIPTION = ("Asynchronous HTTP router, traffic shaper " +
                "and proxy based on Tornado and Redis")
