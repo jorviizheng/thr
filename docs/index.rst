@@ -15,6 +15,8 @@ Getting started
 Configuration
 -------------
 
+* :doc:`/configuration`
+
 
 API Reference
 -------------
