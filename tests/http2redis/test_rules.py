@@ -13,22 +13,28 @@ class TestRules(TestCase):
         self.assertEqual(Rules.count(), 1)
 
     def test_execute_rules(self):
-        add_rule(Criteria(path='/foo'), Actions(set_input_header=('Header-Name', 'FOO')))
-        add_rule(Criteria(path='/bar'), Actions(set_input_header=('Header-Name', 'BAR')))
+        add_rule(Criteria(path='/foo'),
+                 Actions(set_input_header=('Header-Name', 'FOO')))
+        add_rule(Criteria(path='/bar'),
+                 Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
         Rules.execute(Exchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
     def test_execute_multiple_rules(self):
-        add_rule(Criteria(path='/foo'), Actions(set_input_header=('Header-Name', 'FOO')))
-        add_rule(Criteria(path='/foo'), Actions(set_input_header=('Header-Name', 'BAR')))
+        add_rule(Criteria(path='/foo'),
+                 Actions(set_input_header=('Header-Name', 'FOO')))
+        add_rule(Criteria(path='/foo'),
+                 Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
         Rules.execute(Exchange(request))
         self.assertEqual(request.headers['Header-Name'], 'BAR')
 
     def test_stop_option(self):
-        add_rule(Criteria(path='/foo'), Actions(set_input_header=('Header-Name', 'FOO')), stop=True)
-        add_rule(Criteria(path='/foo'), Actions(set_input_header=('Header-Name', 'BAR')))
+        add_rule(Criteria(path='/foo'),
+                 Actions(set_input_header=('Header-Name', 'FOO')), stop=True)
+        add_rule(Criteria(path='/foo'),
+                 Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
         Rules.execute(Exchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')

@@ -7,7 +7,7 @@ from thr.http2redis.rules import add_rule, Criteria, Actions
 class TestApp(AsyncHTTPTestCase):
 
     def setUp(self):
-        super(Http2Redis, self).setUp()
+        super(TestApp, self).setUp()
         add_rule(Criteria(path='/foo'), Actions(set_status_code=201))
         add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
 
