@@ -25,6 +25,12 @@ API Reference
    :maxdepth: 2
 
 .. automodule:: thr
+
+ .. autoclass:: rules.glob
+     :members:
+
+ .. autoclass:: rules.Criteria
+     :members:
  
 
 Indices and tables
