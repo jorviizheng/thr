@@ -4,7 +4,7 @@ from thr.http2redis.app import make_app
 from thr.http2redis.rules import add_rule, Criteria, Actions
 
 
-class Http2Redis(AsyncHTTPTestCase):
+class TestApp(AsyncHTTPTestCase):
 
     def setUp(self):
         super(Http2Redis, self).setUp()

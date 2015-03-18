@@ -5,7 +5,7 @@ from thr.http2redis import Exchange
 from thr.http2redis.rules import Actions
 
 
-class TestCriteria(TestCase):
+class TestActions(TestCase):
 
     def test_set_input_header(self):
         request = HTTPServerRequest(method='GET', uri='/')
