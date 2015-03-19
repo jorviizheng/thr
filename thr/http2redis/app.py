@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# This file is part of thr library released under the MIT license.
+# See the LICENSE file for more information.
+
 from tornado.gen import coroutine
 from tornado.web import RequestHandler, Application, url
 import tornadis
