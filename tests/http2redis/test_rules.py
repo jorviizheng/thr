@@ -1,7 +1,7 @@
 from tornado.httputil import HTTPServerRequest
 from unittest import TestCase
 
-from thr.http2redis import Exchange
+from thr.http2redis import HTTPExchange
 from thr.http2redis.rules import Criteria, Actions, Rules, add_rule
 
 
@@ -18,7 +18,7 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/bar'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(Exchange(request))
+        Rules.execute(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
     def test_execute_multiple_rules(self):
@@ -27,7 +27,7 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/foo'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(Exchange(request))
+        Rules.execute(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'BAR')
 
     def test_stop_option(self):
@@ -36,5 +36,12 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/foo'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(Exchange(request))
+        Rules.execute(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
+
+    def test_set_queue(self):
+        add_rule(Criteria(path='/foo'), Actions(set_queue='test-queue'))
+        request = HTTPServerRequest(method='GET', uri='/foo')
+        exchange = HTTPExchange(request)
+        Rules.execute(exchange)
+        self.assertEqual(exchange.queue, 'test-queue')

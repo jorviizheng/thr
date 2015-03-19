@@ -65,9 +65,14 @@ class Actions(object):
         set_input_header = self.actions.get('set_input_header')
         if set_input_header:
             exchange.request.headers[set_input_header[0]] = set_input_header[1]
+
         set_status_code = self.actions.get('set_status_code')
         if set_status_code:
             exchange.response['status_code'] = set_status_code
+
+        set_queue = self.actions.get('set_queue')
+        if set_queue:
+            exchange.queue = set_queue
 
 
 class Rule(object):
