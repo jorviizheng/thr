@@ -10,7 +10,7 @@ import tornadis
 
 from thr.http2redis.rules import Rules
 from thr.http2redis import HTTPExchange
-from thr.http2redis.utils import make_unique_id
+from thr.utils import make_unique_id
 
 
 redis_pool = tornadis.ClientPool()
