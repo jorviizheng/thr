@@ -1,3 +1,4 @@
+import mock
 import tornado
 from tornado.testing import AsyncHTTPTestCase, gen_test
 import tornadis
@@ -37,4 +38,22 @@ class TestApp(AsyncHTTPTestCase):
         redis = tornadis.Client()
         yield redis.connect()
         result = yield redis.call('BRPOP', 'test-queue', 1)
-        self.assertEqual(result[1], '/quux')
+        self.assertEqual(result[1], b'/quux')
+
+    @mock.patch('thr.http2redis.app.make_unique_id')
+    @gen_test
+    def test_read_something_from_response_key(self, make_unique_id_mock):
+        reply_key = '---reply-key---'
+        make_unique_id_mock.return_value = reply_key
+        add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        redis = tornadis.Client()
+        yield redis.connect()
+        yield redis.call('DEL', reply_key)
+        yield redis.call('LPUSH', reply_key, 'reply-string')
+
+        response = yield self.http_client.fetch(self.get_url('/quux'))
+
+        self.assertIn('reply-string', response.body,
+                      "We should get data from the reply queue")
+        result = yield redis.call('RPOP', reply_key)
+        self.assertIsNone(result, "Reply queue should now be empty")
