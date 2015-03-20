@@ -54,7 +54,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
         res['body_link'] = body_link
     else:
         if len(request.body) > 0:
-            res['body'] = request.body.decode()
+            res['body'] = request.body
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
