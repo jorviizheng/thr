@@ -4,6 +4,7 @@ from tornado.httputil import HTTPServerRequest
 from unittest import TestCase
 
 from thr.utils import make_unique_id, serialize_http_request
+from thr.utils import unserialize_message
 
 
 class TestUtils(TestCase):
@@ -15,8 +16,12 @@ class TestUtils(TestCase):
         self.assertTrue(len(id2) > 10)
         self.assertTrue(id1 != id2)
 
-    def test_serialize1(self):
-        uri = "/foo/bar/?foo=ééé&bar=simple&foo2=simple2&bar2"
+    def test_serialize_basic(self):
+        uri = "/foo/bar"
         req = HTTPServerRequest(method='GET', uri=uri)
-        serialize_http_request(req)
-        # FIXME: check
+        msg = serialize_http_request(req)
+        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        self.assertEquals(hreq.method, 'GET')
+        self.assertTrue(body_link is None)
+        self.assertEquals(len(extra_dict), 0)
+        self.assertEquals(hreq.url, "http://127.0.0.1" + uri)
