@@ -53,7 +53,7 @@ class TestApp(AsyncHTTPTestCase):
 
         response = yield self.http_client.fetch(self.get_url('/quux'))
 
-        self.assertIn('reply-string', response.body,
+        self.assertIn('reply-string', response.body.decode(),
                       "We should get data from the reply queue")
         result = yield redis.call('RPOP', reply_key)
         self.assertIsNone(result, "Reply queue should now be empty")

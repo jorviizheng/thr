@@ -37,7 +37,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
     """
     encoded_query_arguments = {}
     for key, values in request.query_arguments.items():
-        encoded_query_arguments[key] = [x.decode('utf-8') for x in values]
+        encoded_query_arguments[key] = [x.decode('latin1') for x in values]
     res = {"method": request.method,
            "path": request.path,
            "headers": sorted(request.headers.get_all()),
@@ -47,7 +47,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
     if body_link is not None:
         res['body_link'] = body_link
     else:
-        res['body'] = request.body
+        res['body'] = request.body.decode()
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
