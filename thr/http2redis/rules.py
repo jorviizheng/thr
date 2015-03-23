@@ -6,6 +6,7 @@
 
 import re
 from fnmatch import fnmatch
+from tornado import gen
 
 
 ruleset = []
@@ -37,18 +38,20 @@ class Criteria(object):
     def check_request_attribute(self, request, name):
         criterion = self.criteria.get(name)
         if criterion is None:
-            return True
+            return gen.maybe_future(True)
 
         value = getattr(request, name)
         if isinstance(criterion, (glob, RegexpType)):
-            return criterion.match(value)
+            result = criterion.match(value)
         elif callable(criterion):
-            return criterion(value)
+            result = criterion(value)
         else:
-            return value == criterion
+            result = value == criterion
+        return gen.maybe_future(result)
 
+    @gen.coroutine
     def match(self, request):
-        """Check a request against creteria
+        """Check a request against the criteria
 
         Args:
             request: A Tornado HTTPServerRequest object
@@ -56,10 +59,12 @@ class Criteria(object):
         Returns:
             boolean
         """
-        return all(
+        futures = [
             self.check_request_attribute(request, attrname)
             for attrname in ('method', 'path', 'remote_ip')
-        )
+        ]
+        result = yield futures
+        raise gen.Return(all(result))
 
 
 class Actions(object):
@@ -106,9 +111,11 @@ class Rules(object):
         return len(cls.rules)
 
     @classmethod
+    @gen.coroutine
     def execute(cls, exchange):
         for rule in cls.rules:
-            if rule.criteria.match(exchange.request):
+            match = yield rule.criteria.match(exchange.request)
+            if match:
                 if rule.stop:
                     break
                 rule.actions.execute(exchange)

@@ -30,7 +30,7 @@ doc:
 
 test:
 	flake8 --exclude=docs/*,examples/* .
-	cd tests && nosetests
+	nosetests
 
 coveralls:
 	cd tests && nosetests --with-coverage --cover-package=thr && ../.coveralls.sh

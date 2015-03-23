@@ -59,3 +59,18 @@ class TestApp(AsyncHTTPTestCase):
                       "We should get data from the reply queue")
         result = yield redis.call('RPOP', reply_key)
         self.assertIsNone(result, "Reply queue should now be empty")
+
+    @gen_test
+    def test_coroutine_rule(self):
+        @tornado.gen.coroutine
+        def coroutine_rule(request):
+            return False
+        add_rule(Criteria(path=coroutine_rule), Actions(set_queue='no-match'),
+                 stop=1)
+        add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        yield self.http_client.fetch(self.get_url('/quux'))
+        redis = tornadis.Client()
+        yield redis.connect()
+        result = yield redis.call('BRPOP', 'test-queue', 1)
+        data = json.loads(result[1].decode())
+        self.assertEqual(data['path'], '/quux')

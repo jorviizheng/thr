@@ -21,7 +21,7 @@ class Handler(RequestHandler):
     @coroutine
     def get(self):
         exchange = HTTPExchange(self.request)
-        Rules.execute(exchange)
+        yield Rules.execute(exchange)
         if 'status_code' in exchange.response:
             self.set_status(exchange.response['status_code'])
         else:
