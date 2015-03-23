@@ -10,7 +10,7 @@ import tornadis
 
 from thr.http2redis.rules import Rules
 from thr.http2redis import HTTPExchange
-from thr.utils import make_unique_id
+from thr.utils import make_unique_id, serialize_http_request
 
 
 redis_pool = tornadis.ClientPool()
@@ -26,7 +26,8 @@ class Handler(RequestHandler):
             self.set_status(exchange.response['status_code'])
         else:
             redis = yield redis_pool.get_connected_client()
-            yield redis.call('LPUSH', exchange.queue, exchange.request.path)
+            serialized_request = serialize_http_request(exchange.request)
+            yield redis.call('LPUSH', exchange.queue, serialized_request)
             key = make_unique_id()
             result = yield redis.call('BRPOP', key, 1)
             if result:

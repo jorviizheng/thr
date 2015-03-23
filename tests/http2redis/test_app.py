@@ -1,3 +1,4 @@
+import json
 import mock
 import tornado
 from tornado.testing import AsyncHTTPTestCase, gen_test
@@ -38,7 +39,8 @@ class TestApp(AsyncHTTPTestCase):
         redis = tornadis.Client()
         yield redis.connect()
         result = yield redis.call('BRPOP', 'test-queue', 1)
-        self.assertEqual(result[1], b'/quux')
+        data = json.loads(result[1].decode())
+        self.assertEqual(data['path'], '/quux')
 
     @mock.patch('thr.http2redis.app.make_unique_id')
     @gen_test
