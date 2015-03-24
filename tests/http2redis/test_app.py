@@ -12,9 +12,18 @@ class TestApp(AsyncHTTPTestCase):
 
     def setUp(self):
         super(TestApp, self).setUp()
+        self.redis = tornadis.Client()
         Rules.reset()
         add_rule(Criteria(path='/foo'), Actions(set_status_code=201))
         add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
+        self.make_response_key_predictable()
+
+    def make_response_key_predictable(self):
+        self.response_key = '---response-key---'
+        patcher = mock.patch('thr.http2redis.app.make_unique_id')
+        self.addCleanup(patcher.stop)
+        mock_object = patcher.start()
+        mock_object.return_value = self.response_key
 
     def get_new_ioloop(self):
         return tornado.ioloop.IOLoop.instance()
@@ -35,42 +44,43 @@ class TestApp(AsyncHTTPTestCase):
     @gen_test
     def test_write_something_to_queue(self):
         add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        yield self.redis.connect()
+        yield self.redis.call('DEL', 'test-queue')
         yield self.http_client.fetch(self.get_url('/quux'))
-        redis = tornadis.Client()
-        yield redis.connect()
-        result = yield redis.call('BRPOP', 'test-queue', 1)
+        result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
         self.assertEqual(data['path'], '/quux')
+        self.assertEqual(data['extra']['response_key'], self.response_key)
 
-    @mock.patch('thr.http2redis.app.make_unique_id')
     @gen_test
-    def test_read_something_from_response_key(self, make_unique_id_mock):
-        reply_key = '---reply-key---'
-        make_unique_id_mock.return_value = reply_key
+    def test_read_something_from_response_key(self):
         add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
-        redis = tornadis.Client()
-        yield redis.connect()
-        yield redis.call('DEL', reply_key)
-        yield redis.call('LPUSH', reply_key, 'reply-string')
+        yield self.redis.connect()
+        yield self.redis.call('DEL', self.response_key)
+        yield self.redis.call('LPUSH', self.response_key, 'response-string')
 
         response = yield self.http_client.fetch(self.get_url('/quux'))
 
-        self.assertIn('reply-string', response.body.decode(),
-                      "We should get data from the reply queue")
-        result = yield redis.call('RPOP', reply_key)
+        self.assertIn('response-string', response.body.decode(),
+                      "We should get data from the response queue")
+        result = yield self.redis.call('RPOP', self.response_key)
         self.assertIsNone(result, "Reply queue should now be empty")
 
     @gen_test
     def test_coroutine_rule(self):
         @tornado.gen.coroutine
         def coroutine_rule(request):
-            return False
+            return False  # Une coroutine qui fait un return?
         add_rule(Criteria(path=coroutine_rule), Actions(set_queue='no-match'),
                  stop=1)
         add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
         yield self.http_client.fetch(self.get_url('/quux'))
-        redis = tornadis.Client()
-        yield redis.connect()
-        result = yield redis.call('BRPOP', 'test-queue', 1)
+        yield self.redis.connect()
+        result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
         self.assertEqual(data['path'], '/quux')
+
+    @gen_test
+    def test_coroutine_action(self):
+        # FIXME
+        pass

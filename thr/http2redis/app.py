@@ -26,10 +26,14 @@ class Handler(RequestHandler):
             self.set_status(exchange.response['status_code'])
         else:
             redis = yield redis_pool.get_connected_client()
-            serialized_request = serialize_http_request(exchange.request)
+            response_key = make_unique_id()
+            serialized_request = serialize_http_request(
+                exchange.request,
+                dict_to_inject={
+                    'response_key': response_key
+                })
             yield redis.call('LPUSH', exchange.queue, serialized_request)
-            key = make_unique_id()
-            result = yield redis.call('BRPOP', key, 1)
+            result = yield redis.call('BRPOP', response_key, 1)
             if result:
                 self.write(result[1])
 
