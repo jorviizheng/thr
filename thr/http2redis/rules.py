@@ -116,9 +116,9 @@ class Rules(object):
         for rule in cls.rules:
             match = yield rule.criteria.match(exchange.request)
             if match:
-                if rule.stop:
-                    break
                 rule.actions.execute(exchange)
+                if rule.stop:
+                    return
 
 
 def add_rule(criteria, actions, **kwargs):

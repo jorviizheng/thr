@@ -67,13 +67,35 @@ class TestApp(AsyncHTTPTestCase):
         self.assertIsNone(result, "Reply queue should now be empty")
 
     @gen_test
-    def test_coroutine_rule(self):
+    def test_coroutine_rule_returns_false(self):
+
         @tornado.gen.coroutine
         def coroutine_rule(request):
-            return False  # Une coroutine qui fait un return?
+            yield tornado.gen.maybe_future(None)
+            raise tornado.gen.Return(False)
+
         add_rule(Criteria(path=coroutine_rule), Actions(set_queue='no-match'),
                  stop=1)
         add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        yield self.http_client.fetch(self.get_url('/quux'))
+        yield self.redis.connect()
+        result = yield self.redis.call('BRPOP', 'test-queue', 1)
+        data = json.loads(result[1].decode())
+        self.assertEqual(data['path'], '/quux')
+
+    @gen_test
+    def test_coroutine_rule_returns_true(self):
+        Rules.reset()
+
+        @tornado.gen.coroutine
+        def coroutine_rule(request):
+            yield tornado.gen.maybe_future(None)
+            raise tornado.gen.Return(True)
+
+        add_rule(Criteria(path=coroutine_rule),
+                 Actions(set_queue='test-queue'),
+                 stop=1)
+        add_rule(Criteria(path='/quux'), Actions(set_queue='no-match'))
         yield self.http_client.fetch(self.get_url('/quux'))
         yield self.redis.connect()
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
