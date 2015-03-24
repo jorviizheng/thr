@@ -35,20 +35,20 @@ class TestCriteria(testing.AsyncTestCase):
         self.assertFalse(result)
 
     @testing.gen_test
-    def test_path_match_function(self):
+    def test_match_function(self):
         def criterion_function(path):
             return True
         request = HTTPServerRequest(uri='/foo/bar')
-        criteria = Criteria(path=criterion_function)
+        criteria = Criteria(request=criterion_function)
         result = yield criteria.match(request)
         self.assertTrue(result)
 
     @testing.gen_test
-    def test_path_does_not_match_function(self):
+    def test_does_not_match_function(self):
         def criterion_function(path):
             return False
         request = HTTPServerRequest(uri='/foo/bar')
-        criteria = Criteria(path=criterion_function)
+        criteria = Criteria(request=criterion_function)
         result = yield criteria.match(request)
         self.assertFalse(result)
 
@@ -67,16 +67,6 @@ class TestCriteria(testing.AsyncTestCase):
         criteria = Criteria(remote_ip=glob('10.0.1.*'))
         result = yield criteria.match(request)
         self.assertFalse(result)
-
-    @testing.gen_test
-    def test_remote_ip_match_function(self):
-        def criterion_function(path):
-            return True
-        request = HTTPServerRequest(uri='/')
-        request.remote_ip = '10.0.0.1'
-        criteria = Criteria(remote_ip=criterion_function)
-        result = yield criteria.match(request)
-        self.assertTrue(result)
 
     @testing.gen_test
     def test_remote_ip_does_not_match_function(self):

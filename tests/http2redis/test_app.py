@@ -67,7 +67,7 @@ class TestApp(AsyncHTTPTestCase):
         self.assertIsNone(result, "Reply queue should now be empty")
 
     @gen_test
-    def test_coroutine_rule_returns_false(self):
+    def test_matching_coroutine_rule(self):
 
         @tornado.gen.coroutine
         def coroutine_rule(request):
@@ -84,7 +84,7 @@ class TestApp(AsyncHTTPTestCase):
         self.assertEqual(data['path'], '/quux')
 
     @gen_test
-    def test_coroutine_rule_returns_true(self):
+    def test_non_matching_coroutine_rule(self):
         Rules.reset()
 
         @tornado.gen.coroutine
@@ -92,7 +92,7 @@ class TestApp(AsyncHTTPTestCase):
             yield tornado.gen.maybe_future(None)
             raise tornado.gen.Return(True)
 
-        add_rule(Criteria(path=coroutine_rule),
+        add_rule(Criteria(request=coroutine_rule),
                  Actions(set_queue='test-queue'),
                  stop=1)
         add_rule(Criteria(path='/quux'), Actions(set_queue='no-match'))

@@ -7,8 +7,10 @@ from thr.http2redis.rules import Criteria, Actions, Rules, add_rule
 
 class TestRules(TestCase):
 
-    def test_add_rule(self):
+    def setUp(self):
         Rules.reset()
+
+    def test_add_rule(self):
         add_rule(Criteria(), Actions())
         self.assertEqual(Rules.count(), 1)
 
@@ -39,9 +41,26 @@ class TestRules(TestCase):
         Rules.execute(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
-    def test_set_queue(self):
+    def test_set_queue_based_on_path(self):
         add_rule(Criteria(path='/foo'), Actions(set_queue='test-queue'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)
         Rules.execute(exchange)
         self.assertEqual(exchange.queue, 'test-queue')
+
+    def test_set_queue_based_on_callable(self):
+
+        def callback_false(request):
+            return False
+
+        def callback_true(request):
+            return True
+
+        add_rule(Criteria(request=callback_false),
+                 Actions(set_queue='not-this-one'), stop=1)
+        add_rule(Criteria(request=callback_true),
+                 Actions(set_queue='yes-this-one'))
+        request = HTTPServerRequest(method='GET', uri='/foo')
+        exchange = HTTPExchange(request)
+        Rules.execute(exchange)
+        self.assertEqual(exchange.queue, 'yes-this-one')

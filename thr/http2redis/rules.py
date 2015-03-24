@@ -38,16 +38,13 @@ class Criteria(object):
     def check_request_attribute(self, request, name):
         criterion = self.criteria.get(name)
         if criterion is None:
-            return gen.maybe_future(True)
+            return True
 
         value = getattr(request, name)
         if isinstance(criterion, (glob, RegexpType)):
-            result = criterion.match(value)
-        elif callable(criterion):
-            result = criterion(value)
+            return criterion.match(value)
         else:
-            result = value == criterion
-        return gen.maybe_future(result)
+            return value == criterion
 
     @gen.coroutine
     def match(self, request):
@@ -60,9 +57,13 @@ class Criteria(object):
             boolean
         """
         futures = [
-            self.check_request_attribute(request, attrname)
+            gen.maybe_future(self.check_request_attribute(request, attrname))
             for attrname in ('method', 'path', 'remote_ip')
         ]
+        if 'request' in self.criteria:
+            callback = self.criteria['request']
+            future = gen.maybe_future(callback(request))
+            futures.append(future)
         result = yield futures
         raise gen.Return(all(result))
 
