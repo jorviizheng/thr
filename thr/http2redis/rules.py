@@ -72,19 +72,31 @@ class Actions(object):
 
     def __init__(self, **kwargs):
         self.actions = kwargs
+        self.action_names = [
+            name for name in dir(self)
+            if name.startswith('set_')
+        ]
 
     def execute(self, exchange):
-        set_input_header = self.actions.get('set_input_header')
-        if set_input_header:
-            exchange.request.headers[set_input_header[0]] = set_input_header[1]
+        for action_name in self.action_names:
+            action = self.actions.get(action_name)
+            if action:
+                if callable(action):
+                    value = action(exchange.request)
+                else:
+                    value = action
+                callback = getattr(self, action_name)
+                callback(exchange, value)
 
-        set_status_code = self.actions.get('set_status_code')
-        if set_status_code:
-            exchange.response['status_code'] = set_status_code
+    def set_input_header(self, exchange, value):
+        header_name, header_value = value
+        exchange.request.headers[header_name] = header_value
 
-        set_queue = self.actions.get('set_queue')
-        if set_queue:
-            exchange.queue = set_queue
+    def set_status_code(self, exchange, value):
+        exchange.response['status_code'] = value
+
+    def set_queue(self, exchange, value):
+        exchange.queue = value
 
 
 class Rule(object):
