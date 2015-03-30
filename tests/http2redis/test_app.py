@@ -1,6 +1,7 @@
 import json
 import mock
 import tornado
+from tornado import gen
 from tornado.testing import AsyncHTTPTestCase, gen_test
 import tornadis
 
@@ -104,5 +105,16 @@ class TestApp(AsyncHTTPTestCase):
 
     @gen_test
     def test_coroutine_action(self):
-        # FIXME
-        pass
+        Rules.reset()
+
+        @gen.coroutine
+        def coroutine_action(request):
+            yield gen.maybe_future(None)
+            raise gen.Return(202)
+
+        add_rule(Criteria(path='/quux'),
+                 Actions(set_status_code=coroutine_action,
+                         set_queue='test-queue'),
+                 stop=1)
+        response = yield self.http_client.fetch(self.get_url('/quux'))
+        self.assertEqual(response.code, 202)

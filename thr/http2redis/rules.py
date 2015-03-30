@@ -77,7 +77,9 @@ class Actions(object):
             if name.startswith('set_')
         ]
 
+    @gen.coroutine
     def execute(self, exchange):
+        futures = {}
         for action_name in self.action_names:
             action = self.actions.get(action_name)
             if action:
@@ -85,8 +87,17 @@ class Actions(object):
                     value = action(exchange.request)
                 else:
                     value = action
-                callback = getattr(self, action_name)
-                callback(exchange, value)
+                future = gen.maybe_future(value)
+                futures[action_name] = future
+
+        result_dict = yield futures
+
+        for action_name in self.action_names:
+            action = self.actions.get(action_name)
+            if action:
+                set_value = getattr(self, action_name)
+                value = result_dict[action_name]
+                set_value(exchange, value)
 
     def set_input_header(self, exchange, value):
         header_name, header_value = value
@@ -129,7 +140,7 @@ class Rules(object):
         for rule in cls.rules:
             match = yield rule.criteria.match(exchange.request)
             if match:
-                rule.actions.execute(exchange)
+                yield rule.actions.execute(exchange)
                 if rule.stop:
                     return
 
