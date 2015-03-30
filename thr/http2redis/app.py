@@ -5,7 +5,7 @@
 # See the LICENSE file for more information.
 
 from tornado import ioloop
-from tornado.gen import coroutine
+from tornado import gen
 from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
@@ -24,7 +24,7 @@ define("port", type=int, default=8888, help="Server port")
 
 class Handler(RequestHandler):
 
-    @coroutine
+    @gen.coroutine
     def get(self):
         exchange = HTTPExchange(self.request)
         yield Rules.execute(exchange)
@@ -49,7 +49,7 @@ class Handler(RequestHandler):
 
 def make_app():
     if options.config is not None:
-        execfile(options.config)
+        exec(open(options.config).read(), {})
     return Application([url(r"/.*", Handler)])
 
 
