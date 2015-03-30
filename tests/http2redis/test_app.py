@@ -58,15 +58,16 @@ class TestApp(AsyncHTTPTestCase):
         add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
 
     @gen_test
-    def test_201(self):
+    def test_get_201(self):
         self.add_basic_rules()
         response = yield self.http_client.fetch(self.get_url('/foo'))
         self.assertEqual(response.code, 201)
 
     @gen_test
-    def test_202(self):
+    def test_post_202(self):
         self.add_basic_rules()
-        response = yield self.http_client.fetch(self.get_url('/bar'))
+        response = yield self.http_client.fetch(self.get_url('/bar'), method="POST",
+                                                body="whatever")
         self.assertEqual(response.code, 202)
 
     @gen_test

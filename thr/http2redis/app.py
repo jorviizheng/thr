@@ -24,8 +24,26 @@ define("port", type=int, default=8888, help="Server port")
 
 class Handler(RequestHandler):
 
+    def get(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
+    def put(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
+    def head(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
+    def options(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
     @gen.coroutine
-    def get(self):
+    def handle(self, *args, **kwargs):
         exchange = HTTPExchange(self.request)
         yield Rules.execute(exchange)
         if 'status_code' in exchange.response:
