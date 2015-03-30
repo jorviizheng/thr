@@ -4,8 +4,10 @@
 # This file is part of thr library released under the MIT license.
 # See the LICENSE file for more information.
 
+from tornado import ioloop
 from tornado.gen import coroutine
 from tornado.web import RequestHandler, Application, url
+from tornado.options import define, options, parse_command_line
 import tornadis
 
 from thr.http2redis.rules import Rules
@@ -16,6 +18,10 @@ from thr.utils import make_unique_id, serialize_http_request
 redis_pool = tornadis.ClientPool()
 
 
+define("config", help="Path to config file")
+define("port", type=int, default=8888, help="Server port")
+
+
 class Handler(RequestHandler):
 
     @coroutine
@@ -24,6 +30,9 @@ class Handler(RequestHandler):
         yield Rules.execute(exchange)
         if 'status_code' in exchange.response:
             self.set_status(exchange.response['status_code'])
+        elif exchange.queue is None:
+            self.write("404 Not found")
+            self.set_status(404)
         else:
             redis = yield redis_pool.get_connected_client()
             response_key = make_unique_id()
@@ -39,10 +48,14 @@ class Handler(RequestHandler):
 
 
 def make_app():
-    return Application([
-        url(r"/.*", Handler),
-    ])
+    if options.config is not None:
+        execfile(options.config)
+    return Application([url(r"/.*", Handler)])
 
 
 def main():
-    print("Main")
+    parse_command_line()
+    print("Start http2redis on http://localhost:{}".format(options.port))
+    app = make_app()
+    app.listen(options.port)
+    ioloop.IOLoop.instance().start()

@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+#
+# This file is part of thr library released under the MIT license.
+# See the LICENSE file for more information.
+
+import os
 import json
 import mock
 import tornado
@@ -5,8 +11,24 @@ from tornado import gen
 from tornado.testing import AsyncHTTPTestCase, gen_test
 import tornadis
 
-from thr.http2redis.app import make_app
+from thr.http2redis import app
 from thr.http2redis.rules import add_rule, Criteria, Actions, Rules
+
+
+class TestLoadConfigFile(AsyncHTTPTestCase):
+
+    def get_new_ioloop(self):
+        return tornado.ioloop.IOLoop.instance()
+
+    def get_app(self):
+        config_file = os.path.join(os.path.dirname(__file__), 'config.py')
+        app.options.config = config_file
+        return app.make_app()
+
+    @gen_test
+    def test_load_config_file(self):
+        response = yield self.http_client.fetch(self.get_url('/foo'))
+        self.assertEqual(response.code, 201)
 
 
 class TestApp(AsyncHTTPTestCase):
@@ -15,8 +37,6 @@ class TestApp(AsyncHTTPTestCase):
         super(TestApp, self).setUp()
         self.redis = tornadis.Client()
         Rules.reset()
-        add_rule(Criteria(path='/foo'), Actions(set_status_code=201))
-        add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
         self.make_response_key_predictable()
 
     def make_response_key_predictable(self):
@@ -30,17 +50,31 @@ class TestApp(AsyncHTTPTestCase):
         return tornado.ioloop.IOLoop.instance()
 
     def get_app(self):
-        return make_app()
+        app.options.config = None
+        return app.make_app()
+
+    def add_basic_rules(self):
+        add_rule(Criteria(path='/foo'), Actions(set_status_code=201))
+        add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
 
     @gen_test
     def test_201(self):
+        self.add_basic_rules()
         response = yield self.http_client.fetch(self.get_url('/foo'))
         self.assertEqual(response.code, 201)
 
     @gen_test
     def test_202(self):
+        self.add_basic_rules()
         response = yield self.http_client.fetch(self.get_url('/bar'))
         self.assertEqual(response.code, 202)
+
+    @gen_test
+    def test_404(self):
+        self.add_basic_rules()
+        response = yield self.http_client.fetch(self.get_url('/baz'),
+                                                raise_error=False)
+        self.assertEqual(response.code, 404)
 
     @gen_test
     def test_write_something_to_queue(self):

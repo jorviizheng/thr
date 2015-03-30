@@ -51,7 +51,7 @@ setup(
     ],
     entry_points="""
     [console_scripts]
-    http2redis = thr.http2redis:main
-    redis2http = thr.redis2http:main
+    http2redis = thr.http2redis.app:main
+    redis2http = thr.redis2http.app:main
     """,
 )

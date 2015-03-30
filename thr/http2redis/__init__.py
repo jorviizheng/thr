@@ -10,3 +10,4 @@ class HTTPExchange(object):
     def __init__(self, request):
         self.request = request
         self.response = {}
+        self.queue = None
