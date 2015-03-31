@@ -20,11 +20,11 @@ http2redis
 ~~~~~~~~~~
 
 http2redis must be configured with a Python script based on a simple API. You just need
-to know one function and two classes to get started. The ``add_rule`` function
-is used to create a new rouring rule. ``add_rule`` takes two mandatory
-parameters: an instance of the ``Criteria`` class and an instance of the
-``Actions`` class.  You may also use the optional ``stop`` keyword argument to
-tell thr that if a request matches the rule, it should ignore subsequent rules for this request.
+to know about one function and two classes to get started. The :func:`~thr.http2redis.rules.add_rule` function
+is used to create a new rule. :func:`~thr.http2redis.rules.add_rule` takes two mandatory
+parameters: an instance of the :py:class:`~thr.http2redis.rules.Criteria` class and an instance of the
+:py:class:`~thr.http2redis.rules.Actions` class.  You may also use the optional :keyword:`stop` keyword argument to
+tell thr that if a request matches the rule, it should ignore subsequent rules for that request.
 
 .. highlight:: python
 
@@ -49,44 +49,35 @@ Now you can send requests to verify that the configuration file is taken into ac
 
     $ curl -D - http://localhost:8888/forbidden
     HTTP/1.1 403 Forbidden
-    Date: Mon, 30 Mar 2015 15:16:54 GMT
-    Content-Length: 0
-    Content-Type: text/html; charset=UTF-8
-    Server: TornadoServer/4.1
+    [...]
 
     $ curl -D - http://localhost:8888/allowed
     HTTP/1.1 200 OK
-    Date: Mon, 30 Mar 2015 15:16:59 GMT
-    Content-Length: 0
-    Etag: "da39a3ee5e6b4b0d3255bfef95601890afd80709"
-    Content-Type: text/html; charset=UTF-8
-    Server: TornadoServer/4.1
-
-
-
-Configuration
--------------
-
-* :doc:`/configuration`
+    [...]
 
 
 API Reference
 -------------
 
-.. toctree::
-   :maxdepth: 2
-
 .. automodule:: thr
 
- .. autoclass:: rules.glob
+ .. autofunction:: thr.http2redis.rules.add_rule
+
+ .. autoclass:: thr.http2redis.rules.Criteria
      :members:
 
- .. autoclass:: rules.Criteria
+ .. autoclass:: thr.http2redis.rules.Actions
+     :members:
+
+ .. autoclass:: thr.http2redis.rules.glob
+     :members:
+
+ .. autoclass:: thr.http2redis.HTTPExchange
      :members:
  
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`

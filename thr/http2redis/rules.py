@@ -15,22 +15,47 @@ RegexpType = type(re.compile(''))
 
 
 class glob(object):
-    """Adapter providing a regexp-like interface for glob expressions"""
-    def __init__(self, pattern):
-        """
-        Constructor
+    """
+    Adapter providing a regexp-like interface for glob expressions
 
-        Args:
-            pattern: a glob patter
-        """
+    Args:
+        pattern: a glob pattern
+
+    >>> glob_obj = glob("*.txt")
+    >>> glob_obj.match("foo.txt")
+    True
+    >>> glob_obj.match("foo.py")
+    False
+    """
+
+    def __init__(self, pattern):
         self.pattern = pattern
 
     def match(self, string):
+        """
+        Args:
+            string: a string to match against the glob pattrn
+        Return:
+            bool
+        """
         return fnmatch(string, self.pattern)
 
 
 class Criteria(object):
-    """Encapsulate a series of criteria which may be satisfied or not."""
+    """
+    A set of criteria which may be satisfied or not. Each criterion is
+    supplied as a keyword argument when creating :class:`Criteria`
+    instances and may be a string, a :class:`~thr.http2redis.rules.glob` object or
+    a compiled regular expression object. A special criterion named
+    `request` may be a callable or a coroutine.
+
+    Keyword Args:
+        path: check against the request path
+        method: check the HTTP method
+        remote_ip: check the remote IP address
+        request: callback taking a request object as its sole argument
+                 and returning a boolean value
+    """
 
     def __init__(self, **kwargs):
         self.criteria = kwargs
@@ -54,7 +79,7 @@ class Criteria(object):
             request: A Tornado HTTPServerRequest object
 
         Returns:
-            boolean
+            bool
         """
         futures = [
             gen.maybe_future(self.check_request_attribute(request, attrname))
@@ -69,6 +94,19 @@ class Criteria(object):
 
 
 class Actions(object):
+    """
+    A set of actions to perform on a request/response exchange.
+
+    Each action is supplied as a keyword argument when instanciating
+    :class:`Actions` and may be an action-specific value or a callable accepting
+    an :class:`~thr.http2redis.HTTPExchange` as its sole argument and
+    returning a value.
+
+    Keyword Args:
+        set_input_header: a pair of header name and value
+        set_status_code: and HTTP response status code
+        set_queue: the name of a Redis queue in which to push the request
+    """
 
     def __init__(self, **kwargs):
         self.actions = kwargs
@@ -79,6 +117,15 @@ class Actions(object):
 
     @gen.coroutine
     def execute(self, exchange):
+        """
+        Apply actions to the HTTP exchange
+
+        Args:
+            exchange: An :class:`~thr.http2redis.HTTPExchange` instance
+
+        Return:
+            None
+        """
         futures = {}
         for action_name in self.action_names:
             action = self.actions.get(action_name)
@@ -146,4 +193,17 @@ class Rules(object):
 
 
 def add_rule(criteria, actions, **kwargs):
+    """
+    Add a rule that will execute :class:`Actions` based on :class:`Criteria`.
+
+    Args:
+        criteria: A :class:`Criteria` instance
+        actions: An :class:`Actions` instance
+
+    Keyword Args:
+        stop: if True, don't execute subsequent rules if this one matches (default False)
+
+    Returns:
+        None
+    """
     Rules.add(criteria, actions, **kwargs)
