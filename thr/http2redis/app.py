@@ -42,6 +42,9 @@ class Handler(RequestHandler):
     def options(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
 
+    def patch(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
+
     @gen.coroutine
     def handle(self, *args, **kwargs):
         exchange = HTTPExchange(self.request)
@@ -52,17 +55,17 @@ class Handler(RequestHandler):
             self.write("404 Not found")
             self.set_status(404)
         else:
-            redis = yield redis_pool.get_connected_client()
-            response_key = make_unique_id()
-            serialized_request = serialize_http_request(
-                exchange.request,
-                dict_to_inject={
-                    'response_key': response_key
-                })
-            yield redis.call('LPUSH', exchange.queue, serialized_request)
-            result = yield redis.call('BRPOP', response_key, 1)
-            if result:
-                self.write(result[1])
+            with (yield redis_pool.connected_client()) as redis:
+                response_key = make_unique_id()
+                serialized_request = serialize_http_request(
+                    exchange.request,
+                    dict_to_inject={
+                        'response_key': response_key
+                    })
+                yield redis.call('LPUSH', exchange.queue, serialized_request)
+                result = yield redis.call('BRPOP', response_key, 1)
+                if result:
+                    self.write(result[1])
 
 
 def make_app():
