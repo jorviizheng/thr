@@ -45,8 +45,8 @@ class Criteria(object):
     """
     A set of criteria which may be satisfied or not. Each criterion is
     supplied as a keyword argument when creating :class:`Criteria`
-    instances and may be a string, a :class:`~thr.http2redis.rules.glob` object or
-    a compiled regular expression object. A special criterion named
+    instances and may be a string, a :class:`~thr.http2redis.rules.glob` object
+    or a compiled regular expression object. A special criterion named
     `request` may be a callable or a coroutine.
 
     Keyword Args:
@@ -98,8 +98,8 @@ class Actions(object):
     A set of actions to perform on a request/response exchange.
 
     Each action is supplied as a keyword argument when instanciating
-    :class:`Actions` and may be an action-specific value or a callable accepting
-    an :class:`~thr.http2redis.HTTPExchange` as its sole argument and
+    :class:`Actions` and may be an action-specific value or a callable
+    accepting an :class:`~thr.http2redis.HTTPExchange` as its sole argument and
     returning a value.
 
     Keyword Args:
@@ -201,7 +201,8 @@ def add_rule(criteria, actions, **kwargs):
         actions: An :class:`Actions` instance
 
     Keyword Args:
-        stop: if True, don't execute subsequent rules if this one matches (default False)
+        stop: if True, don't execute subsequent rules if this one matches
+        (default False)
 
     Returns:
         None

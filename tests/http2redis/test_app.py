@@ -66,7 +66,8 @@ class TestApp(AsyncHTTPTestCase):
     @gen_test
     def test_post_202(self):
         self.add_basic_rules()
-        response = yield self.http_client.fetch(self.get_url('/bar'), method="POST",
+        response = yield self.http_client.fetch(self.get_url('/bar'),
+                                                method="POST",
                                                 body="whatever")
         self.assertEqual(response.code, 202)
 
