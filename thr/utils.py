@@ -60,8 +60,8 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
     return json.dumps(res)
 
 
-def unserialize_message(message, force_host=None):
-    """Unserializes a message into a tornado HTTPRequest object.
+def unserialize_request_message(message, force_host=None):
+    """Unserializes a request message into a tornado HTTPRequest object.
 
     Args:
         message (str): the message to unserialize.
@@ -113,3 +113,43 @@ def unserialize_message(message, force_host=None):
     if 'extra' in decoded:
         extra_dict = decoded['extra']
     return (request, body_link, http_dict, extra_dict)
+
+
+def serialize_http_response(response, body_link=None, dict_to_inject=None):
+    """Serializes a tornado HTTPResponse object.
+
+    Args:
+        response (HTTPResponse): a tornado HTTPResponse object.
+        body_link (str): if not None, use this as body in the serialization
+            result. It's useful when you have a (big) binary body
+            and when you have already uploaded somewhere else.
+        dict_to_inject (dict): a dict of (string) keys/values to inject
+            inside the serialization.
+    Returns:
+        A string (str), the result of the serialization.
+    """
+    # FIXME
+    pass
+
+
+def unserialize_response_message(message):
+    """Unserializes a response message.
+
+    Args:
+        message (str): the message to unserialize.
+
+    Returns:
+        A tuple (status_code, body, body_link, headers, extra_dict) where:
+            - "status_code" is the http response status_code
+            - "body" is the raw body of the response (or None if there is
+                a body link)
+            - "body_link" is the body link of the response (or None)
+            - "headers" is a HTTPHeaders object (headers of the response)
+            - "extra_dict" is a dict of extra (not HTTP) keys/values injected
+            during serialization
+
+    Raises:
+        ValueError: when there is a "unserialize exception".
+    """
+    # FIXME
+    pass

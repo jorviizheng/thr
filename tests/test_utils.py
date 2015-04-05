@@ -4,7 +4,7 @@ from tornado.httputil import HTTPServerRequest, HTTPHeaders
 from unittest import TestCase
 
 from thr.utils import make_unique_id, serialize_http_request
-from thr.utils import unserialize_message
+from thr.utils import unserialize_request_message
 
 
 class TestUtils(TestCase):
@@ -21,7 +21,8 @@ class TestUtils(TestCase):
         req = HTTPServerRequest(method='GET', uri=uri)
         req.remote_ip = "127.0.0.1"
         msg = serialize_http_request(req)
-        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
         self.assertEquals(hreq.method, 'GET')
         self.assertTrue(body_link is None)
         self.assertEquals(len(extra_dict), 0)
@@ -37,7 +38,8 @@ class TestUtils(TestCase):
         msg = serialize_http_request(req,
                                      dict_to_inject={"foo": "foo1",
                                                      "bar": "bar1"})
-        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
         self.assertEquals(len(extra_dict), 2)
         self.assertEquals(extra_dict['foo'], "foo1")
         self.assertEquals(extra_dict['bar'], "bar1")
@@ -46,7 +48,8 @@ class TestUtils(TestCase):
         uri = "/foo/bar"
         req = HTTPServerRequest(method='PUT', uri=uri, body="foo")
         msg = serialize_http_request(req)
-        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
         self.assertEquals(hreq.method, 'PUT')
         self.assertEquals(hreq.body.decode(), "foo")
         self.assertEquals(body_link, None)
@@ -55,7 +58,8 @@ class TestUtils(TestCase):
         uri = "/foo/bar"
         req = HTTPServerRequest(method='PUT', uri=uri)
         msg = serialize_http_request(req, body_link="http://foo.com/bar")
-        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
         self.assertEquals(hreq.body, None)
         self.assertEquals(body_link, "http://foo.com/bar")
 
@@ -68,7 +72,8 @@ class TestUtils(TestCase):
         headers.add("Foo2", "bar3")
         req.headers = headers
         msg = serialize_http_request(req)
-        (hreq, body_link, http_dict, extra_dict) = unserialize_message(msg)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
         self.assertEquals(len(list(hreq.headers.get_all())), 3)
         self.assertEquals(hreq.headers['Foo2'], "bar3")
         self.assertEquals(hreq.headers['Foo'], "bar,bar2")
