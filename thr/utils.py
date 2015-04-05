@@ -101,7 +101,9 @@ def unserialize_message(message, force_host=None):
         url = "http://%s%s" % (host, decoded['path'])
     kwargs = {}
     if 'headers' in decoded:
-        kwargs['headers'] = HTTPHeaders(decoded['headers'])
+        kwargs['headers'] = HTTPHeaders()
+        for k, v in decoded['headers']:
+            kwargs['headers'].add(k, v)
     if 'body_link' in decoded:
         body_link = decoded['body_link']
     else:
