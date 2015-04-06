@@ -2,6 +2,8 @@
 
 from tornado.httputil import HTTPServerRequest, HTTPHeaders
 from unittest import TestCase
+from six.moves.urllib.parse import urlparse, parse_qsl
+import six
 
 from thr.utils import make_unique_id, serialize_http_request
 from thr.utils import unserialize_request_message
@@ -77,3 +79,30 @@ class TestUtils(TestCase):
         self.assertEquals(len(list(hreq.headers.get_all())), 3)
         self.assertEquals(hreq.headers['Foo2'], "bar3")
         self.assertEquals(hreq.headers['Foo'], "bar,bar2")
+
+    def test_serialize_query_string(self):
+        uri = "/foo/bar"
+        req = HTTPServerRequest(method='GET', uri=uri)
+        utf = u"éééééé"
+        bs = utf.encode('utf-8')
+        req.query_arguments = {"foo1": [b"bar1", b"bar2"], "foo2": [bs],
+                               "foo3": [b"bar3"]}
+        msg = serialize_http_request(req)
+        (hreq, body_link, http_dict, extra_dict) = \
+            unserialize_request_message(msg)
+        o = urlparse(hreq.url)
+        if six.PY3:
+            parsed = sorted(parse_qsl(o.query), key=lambda x: x[0])
+        else:
+            parsed = sorted(parse_qsl(o.query.encode('ASCII')))
+        self.assertEquals(parsed[0][0], 'foo1')
+        self.assertEquals(parsed[0][1], 'bar1')
+        self.assertEquals(parsed[1][0], 'foo1')
+        self.assertEquals(parsed[1][1], 'bar2')
+        self.assertEquals(parsed[2][0], 'foo2')
+        if six.PY3:
+            self.assertEquals(parsed[2][1], utf)
+        else:
+            self.assertEquals(parsed[2][1], bs)
+        self.assertEquals(parsed[3][0], 'foo3')
+        self.assertEquals(parsed[3][1], 'bar3')

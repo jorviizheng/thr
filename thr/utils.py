@@ -6,6 +6,7 @@
 
 import uuid
 import json
+import six
 from six.moves.urllib.parse import urlencode
 from tornado.httpclient import HTTPRequest
 from tornado.httputil import HTTPHeaders
@@ -39,8 +40,11 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
         A string (str), the result of the serialization.
     """
     encoded_query_arguments = {}
-    for key, values in request.query_arguments.items():
-        encoded_query_arguments[key] = [x.decode('latin1') for x in values]
+    if six.PY3:
+        for key, values in request.query_arguments.items():
+            encoded_query_arguments[key] = [x.decode('utf-8') for x in values]
+    else:
+        encoded_query_arguments = request.query_arguments
     encoded_headers = list(request.headers.get_all())
     res = {"method": request.method,
            "path": request.path,
@@ -95,7 +99,13 @@ def unserialize_request_message(message, force_host=None):
     http_dict['host'] = decoded['host']
     http_dict['remote_ip'] = decoded['remote_ip']
     if 'query_arguments' in decoded:
-        query_string = urlencode(decoded['query_arguments'], doseq=True)
+        if six.PY2:
+            new_qa = {}
+            for key, values in decoded['query_arguments'].items():
+                new_qa[key] = [x.encode('utf-8') for x in values]
+        else:
+            new_qa = decoded['query_arguments']
+        query_string = urlencode(new_qa, doseq=True)
         url = "http://%s%s?%s" % (host, decoded['path'], query_string)
     else:
         url = "http://%s%s" % (host, decoded['path'])
