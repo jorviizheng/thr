@@ -128,6 +128,11 @@ def unserialize_request_message(message, force_host=None):
 def serialize_http_response(response, body_link=None, dict_to_inject=None):
     """Serializes a tornado HTTPResponse object.
 
+    Following attributes are used (and only these ones):
+    - body (if body_link is not given)
+    - code
+    - headers
+
     Args:
         response (HTTPResponse): a tornado HTTPResponse object.
         body_link (str): if not None, use this as body in the serialization
@@ -138,8 +143,16 @@ def serialize_http_response(response, body_link=None, dict_to_inject=None):
     Returns:
         A string (str), the result of the serialization.
     """
-    # FIXME
-    pass
+    encoded_headers = list(response.headers.get_all())
+    res = {"status_code": response.code,
+           "headers": encoded_headers}
+    if body_link is not None:
+        res['body_link'] = body_link
+    else:
+        res['body'] = response.body
+    if dict_to_inject is not None:
+        res['extra'] = dict_to_inject
+    return json.dumps(res)
 
 
 def unserialize_response_message(message):
@@ -161,5 +174,18 @@ def unserialize_response_message(message):
     Raises:
         ValueError: when there is a "unserialize exception".
     """
-    # FIXME
-    pass
+    body_link = None
+    body = None
+    extra_dict = {}
+    decoded = json.loads(message)
+    if 'body_link' in decoded:
+        body_link = decoded['body_link']
+    status_code = decoded['status_code']
+    if body_link is None:
+        body = decoded['body']
+    headers = HTTPHeaders()
+    for k, v in decoded['headers']:
+        headers.add(k, v)
+    if 'extra' in decoded:
+        extra_dict = decoded['extra']
+    return (status_code, body, body_link, headers, extra_dict)

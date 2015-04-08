@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 
 from tornado.httputil import HTTPServerRequest, HTTPHeaders
+from tornado.httpclient import HTTPResponse, HTTPRequest
 from unittest import TestCase
 from six.moves.urllib.parse import urlparse, parse_qsl
+from six.moves import cStringIO
 import six
 
 from thr.utils import make_unique_id, serialize_http_request
-from thr.utils import unserialize_request_message
+from thr.utils import unserialize_request_message, serialize_http_response
+from thr.utils import unserialize_response_message
 
 
 class TestUtils(TestCase):
@@ -106,3 +109,24 @@ class TestUtils(TestCase):
             self.assertEquals(parsed[2][1], bs)
         self.assertEquals(parsed[3][0], 'foo3')
         self.assertEquals(parsed[3][1], 'bar3')
+
+    def test_serialize_response(self):
+        req = HTTPRequest("http://foo.com")
+        dct = {'foo': 'bar'}
+        headers = HTTPHeaders()
+        headers.add("Foo", "bar")
+        headers.add("Foo", "bar2")
+        headers.add("Foo2", "bar3")
+        buf = cStringIO("foo")
+        response = HTTPResponse(req, 200, headers=headers, buffer=buf)
+        msg = serialize_http_response(response, dict_to_inject=dct)
+        (status_code, body, body_link, headers, extra_dict) = \
+            unserialize_response_message(msg)
+        self.assertEquals(status_code, 200)
+        self.assertEquals(body_link, None)
+        self.assertEquals(len(extra_dict), 1)
+        self.assertEquals(extra_dict['foo'], 'bar')
+        self.assertEquals(body, "foo")
+        self.assertEquals(len(list(headers.get_all())), 3)
+        self.assertEquals(headers['Foo2'], "bar3")
+        self.assertEquals(headers['Foo'], "bar,bar2")
