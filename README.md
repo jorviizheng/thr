@@ -1,3 +1,4 @@
+![THR Logo](http://amarandon.github.io/img/THR.png)
 # thr
 
 ## Status (master branch)
