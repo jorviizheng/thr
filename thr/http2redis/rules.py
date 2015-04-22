@@ -7,6 +7,7 @@
 import re
 from fnmatch import fnmatch
 from tornado import gen
+from tornado.escape import parse_qs_bytes
 
 
 ruleset = []
@@ -112,7 +113,8 @@ class Actions(object):
         self.actions = kwargs
         self.action_names = [
             name for name in dir(self)
-            if name.startswith('set_')
+            if name.startswith('set_') or name.startswith('add_') \
+            or name.startswith('del_')
         ]
 
     @gen.coroutine
@@ -150,11 +152,59 @@ class Actions(object):
         header_name, header_value = value
         exchange.request.headers[header_name] = header_value
 
+    def add_input_header(self, exchange, value):
+        header_name, header_value = value
+        exchange.request.headers.add(header_name, header_value)
+
+    def del_input_header(self, exchange, value):
+        try:
+            del(exchange.request.headers[value])
+        except KeyError:
+            pass
+
     def set_status_code(self, exchange, value):
         exchange.response['status_code'] = value
 
     def set_queue(self, exchange, value):
         exchange.queue = value
+
+    def set_path(self, exchange, value):
+        exchange.request.path = value
+
+    def set_method(self, exchange, value):
+        exchange.request.method = value
+
+    def set_host(self, exchange, value):
+        exchange.request.host = value
+
+    def set_remote_ip(self, exchange, value):
+        exchange.request.remote_ip = value
+
+    def set_body(self, exchange, value):
+        exchange.request.body = value
+
+    def set_query_string(self, exchange, value):
+        exchange.request.query_arguments = \
+            parse_qs_bytes(value, keep_blank_values=True)
+
+    def add_query_string_arg(self, exchange, value):
+        arg_name, arg_value = value
+        args = exchange.request.query_arguments
+        if arg_name in args:
+            args[arg_name].append(arg_value)
+        else:
+            args[arg_name] = [arg_value]
+
+    def set_query_string_arg(self, exchange, value):
+        arg_name, arg_value = value
+        args = exchange.request.query_arguments
+        args[arg_name] = [arg_value]
+
+    def del_query_string_arg(self, exchange, value):
+        try:
+            del(exchange.request.query_arguments[value])
+        except KeyError:
+            pass
 
 
 class Rule(object):

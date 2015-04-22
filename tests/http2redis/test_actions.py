@@ -1,4 +1,4 @@
-from tornado.httputil import HTTPServerRequest
+from tornado.httputil import HTTPServerRequest, HTTPHeaders
 from tornado import gen
 from tornado.testing import AsyncTestCase, gen_test
 
@@ -60,3 +60,106 @@ class TestActions(AsyncTestCase):
         actions = Actions(set_status_code=callback)
         yield actions.execute(exchange)
         self.assertEqual(exchange.response['status_code'], 201)
+
+    def test_add_input_header(self):
+        headers = HTTPHeaders()
+        headers.add("Header-Name", "header value1")
+        request = HTTPServerRequest(method='GET', uri='/', headers=headers)
+        exchange = HTTPExchange(request)
+        actions = Actions(add_input_header=("Header-Name", "header value2"))
+        actions.execute(exchange)
+        values = exchange.request.headers.get_list('Header-Name')
+        self.assertEquals(len(values), 2)
+        self.assertEquals(values[0], "header value1")
+        self.assertEquals(values[1], "header value2")
+
+    def test_del_input_header(self):
+        headers = HTTPHeaders()
+        headers.add("Header-Name", "header value1")
+        request = HTTPServerRequest(method='GET', uri='/', headers=headers)
+        exchange = HTTPExchange(request)
+        actions = Actions(del_input_header="Header-Name")
+        actions.execute(exchange)
+        keys = list(exchange.request.headers.keys())
+        self.assertEquals(len(keys), 0)
+        actions = Actions(del_input_header="Header-Name2")
+        actions.execute(exchange)
+
+    def test_set_path(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_path="/foo")
+        actions.execute(exchange)
+        self.assertEqual(exchange.request.path, "/foo")
+
+    def test_set_method(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_method="POST")
+        actions.execute(exchange)
+        self.assertEqual(exchange.request.method, "POST")
+
+    def test_set_host(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_host="foobar:8080")
+        actions.execute(exchange)
+        self.assertEqual(exchange.request.host, "foobar:8080")
+
+    def test_set_remote_ip(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_remote_ip="1.2.3.4")
+        actions.execute(exchange)
+        self.assertEqual(exchange.request.remote_ip, "1.2.3.4")
+
+    def test_set_body(self):
+        request = HTTPServerRequest(method='PUT', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_body=b"foobar")
+        actions.execute(exchange)
+        self.assertEqual(exchange.request.body, b"foobar")
+
+    def test_set_query_string(self):
+        request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_query_string="foo2=bar2&foo3=bar3")
+        actions.execute(exchange)
+        args = exchange.request.query_arguments
+        self.assertEqual(len(args), 2)
+        self.assertEqual(len(args["foo2"]), 1)
+        self.assertEqual(len(args["foo3"]), 1)
+        self.assertEqual(args["foo2"][0], "bar2")
+        self.assertEqual(args["foo3"][0], "bar3")
+
+    def test_add_query_string_arg(self):
+        request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
+        exchange = HTTPExchange(request)
+        actions = Actions(add_query_string_arg=("foo2", "bar2"))
+        actions.execute(exchange)
+        args = exchange.request.query_arguments
+        self.assertEqual(len(args), 2)
+        self.assertEqual(len(args["foo1"]), 1)
+        self.assertEqual(len(args["foo2"]), 1)
+        self.assertEqual(args["foo1"][0], "bar1")
+        self.assertEqual(args["foo2"][0], "bar2")
+
+    def test_set_query_string_arg(self):
+        request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_query_string_arg=("foo1", "bar2"))
+        actions.execute(exchange)
+        args = exchange.request.query_arguments
+        self.assertEqual(len(args), 1)
+        self.assertEqual(len(args["foo1"]), 1)
+        self.assertEqual(args["foo1"][0], "bar2")
+
+    def test_del_query_string_arg(self):
+        request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
+        exchange = HTTPExchange(request)
+        actions = Actions(del_query_string_arg="foo1")
+        actions.execute(exchange)
+        args = exchange.request.query_arguments
+        self.assertEqual(len(args), 0)
+        actions = Actions(del_query_string_arg="foo2")
+        actions.execute(exchange)
