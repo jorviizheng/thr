@@ -129,30 +129,30 @@ class TestActions(AsyncTestCase):
         self.assertEqual(len(args), 2)
         self.assertEqual(len(args["foo2"]), 1)
         self.assertEqual(len(args["foo3"]), 1)
-        self.assertEqual(args["foo2"][0], "bar2")
-        self.assertEqual(args["foo3"][0], "bar3")
+        self.assertEqual(args["foo2"][0], b"bar2")
+        self.assertEqual(args["foo3"][0], b"bar3")
 
     def test_add_query_string_arg(self):
         request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
         exchange = HTTPExchange(request)
-        actions = Actions(add_query_string_arg=("foo2", "bar2"))
+        actions = Actions(add_query_string_arg=("foo2", b"bar2"))
         actions.execute(exchange)
         args = exchange.request.query_arguments
         self.assertEqual(len(args), 2)
         self.assertEqual(len(args["foo1"]), 1)
         self.assertEqual(len(args["foo2"]), 1)
-        self.assertEqual(args["foo1"][0], "bar1")
-        self.assertEqual(args["foo2"][0], "bar2")
+        self.assertEqual(args["foo1"][0], b"bar1")
+        self.assertEqual(args["foo2"][0], b"bar2")
 
     def test_set_query_string_arg(self):
         request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
         exchange = HTTPExchange(request)
-        actions = Actions(set_query_string_arg=("foo1", "bar2"))
+        actions = Actions(set_query_string_arg=("foo1", b"bar2"))
         actions.execute(exchange)
         args = exchange.request.query_arguments
         self.assertEqual(len(args), 1)
         self.assertEqual(len(args["foo1"]), 1)
-        self.assertEqual(args["foo1"][0], "bar2")
+        self.assertEqual(args["foo1"][0], b"bar2")
 
     def test_del_query_string_arg(self):
         request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')
