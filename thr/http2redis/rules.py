@@ -7,7 +7,7 @@
 import re
 from fnmatch import fnmatch
 from tornado import gen
-from tornado.escape import parse_qs_bytes
+from thr.http2redis.exchange import HTTPExchange
 
 
 ruleset = []
@@ -107,12 +107,13 @@ class Actions(object):
         set_input_header: a pair of header name and value
         set_status_code: and HTTP response status code
         set_queue: the name of a Redis queue in which to push the request
+        [...]
     """
 
     def __init__(self, **kwargs):
         self.actions = kwargs
         self.action_names = [
-            name for name in dir(self)
+            name for name in dir(HTTPExchange)
             if name.startswith('set_') or name.startswith('add_')
             or name.startswith('del_')
         ]
@@ -159,84 +160,9 @@ class Actions(object):
                 continue
             if mode == "output" and "_output_" not in action_name:
                 continue
-            set_value = getattr(self, action_name)
+            set_value = getattr(exchange, action_name)
             value = result_dict[action_name]
-            set_value(exchange, value)
-
-    def set_input_header(self, exchange, value):
-        header_name, header_value = value
-        exchange.request.headers[header_name] = header_value
-
-    def add_input_header(self, exchange, value):
-        header_name, header_value = value
-        exchange.request.headers.add(header_name, header_value)
-
-    def del_input_header(self, exchange, value):
-        try:
-            del(exchange.request.headers[value])
-        except KeyError:
-            pass
-
-    def set_output_header(self, exchange, value):
-        header_name, header_value = value
-        exchange.response.headers[header_name] = header_value
-
-    def add_output_header(self, exchange, value):
-        header_name, header_value = value
-        exchange.response.headers.add(header_name, header_value)
-
-    def del_output_header(self, exchange, value):
-        try:
-            del(exchange.response.headers[value])
-        except KeyError:
-            pass
-
-    def set_status_code(self, exchange, value):
-        exchange.response.status_code = value
-
-    def set_queue(self, exchange, value):
-        exchange.queue = value
-
-    def set_path(self, exchange, value):
-        exchange.request.path = value
-
-    def set_method(self, exchange, value):
-        exchange.request.method = value
-
-    def set_host(self, exchange, value):
-        exchange.request.host = value
-
-    def set_remote_ip(self, exchange, value):
-        exchange.request.remote_ip = value
-
-    def set_input_body(self, exchange, value):
-        exchange.request.body = value
-
-    def set_output_body(self, exchange, value):
-        exchange.response.body = value
-
-    def set_query_string(self, exchange, value):
-        exchange.request.query_arguments = \
-            parse_qs_bytes(value, keep_blank_values=True)
-
-    def add_query_string_arg(self, exchange, value):
-        arg_name, arg_value = value
-        args = exchange.request.query_arguments
-        if arg_name in args:
-            args[arg_name].append(arg_value)
-        else:
-            args[arg_name] = [arg_value]
-
-    def set_query_string_arg(self, exchange, value):
-        arg_name, arg_value = value
-        args = exchange.request.query_arguments
-        args[arg_name] = [arg_value]
-
-    def del_query_string_arg(self, exchange, value):
-        try:
-            del(exchange.request.query_arguments[value])
-        except KeyError:
-            pass
+            set_value(value)
 
 
 class Rule(object):
