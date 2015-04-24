@@ -113,10 +113,10 @@ class TestActions(AsyncTestCase):
         actions.execute(exchange)
         self.assertEqual(exchange.request.remote_ip, "1.2.3.4")
 
-    def test_set_body(self):
+    def test_set_input_body(self):
         request = HTTPServerRequest(method='PUT', uri='/')
         exchange = HTTPExchange(request)
-        actions = Actions(set_body=b"foobar")
+        actions = Actions(set_input_body=b"foobar")
         actions.execute(exchange)
         self.assertEqual(exchange.request.body, b"foobar")
 

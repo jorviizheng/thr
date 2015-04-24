@@ -180,7 +180,7 @@ class Actions(object):
     def set_remote_ip(self, exchange, value):
         exchange.request.remote_ip = value
 
-    def set_body(self, exchange, value):
+    def set_input_body(self, exchange, value):
         exchange.request.body = value
 
     def set_query_string(self, exchange, value):
