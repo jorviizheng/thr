@@ -13,7 +13,16 @@ class TestActions(AsyncTestCase):
         exchange = HTTPExchange(request)
         actions = Actions(set_input_header=('Header-Name', 'header value'))
         actions.execute_input_actions(exchange)
-        self.assertEqual(request.headers['Header-Name'], 'header value')
+        self.assertEqual(exchange.request.headers['Header-Name'],
+                         'header value')
+
+    def test_set_output_header(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_output_header=('Header-Name', 'header value'))
+        actions.execute_output_actions(exchange)
+        self.assertEqual(exchange.response.headers['Header-Name'],
+                         'header value')
 
     def test_set_status_code(self):
         request = HTTPServerRequest(method='GET', uri='/')
@@ -69,6 +78,19 @@ class TestActions(AsyncTestCase):
         actions = Actions(add_input_header=("Header-Name", "header value2"))
         actions.execute_input_actions(exchange)
         values = exchange.request.headers.get_list('Header-Name')
+        self.assertEquals(len(values), 2)
+        self.assertEquals(values[0], "header value1")
+        self.assertEquals(values[1], "header value2")
+
+    def test_add_output_header(self):
+        headers = HTTPHeaders()
+        headers.add("Header-Name", "header value1")
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        exchange.response.headers = headers
+        actions = Actions(add_output_header=("Header-Name", "header value2"))
+        actions.execute_output_actions(exchange)
+        values = exchange.response.headers.get_list('Header-Name')
         self.assertEquals(len(values), 2)
         self.assertEquals(values[0], "header value1")
         self.assertEquals(values[1], "header value2")
