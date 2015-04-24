@@ -51,6 +51,8 @@ class Handler(RequestHandler):
         yield Rules.execute(exchange)
         if 'status_code' in exchange.response:
             self.set_status(exchange.response['status_code'])
+            if 'body' in exchange.response:
+                self.finish(exchange.response['body'])
         elif exchange.queue is None:
             self.write("404 Not found")
             self.set_status(404)

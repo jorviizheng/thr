@@ -183,6 +183,9 @@ class Actions(object):
     def set_input_body(self, exchange, value):
         exchange.request.body = value
 
+    def set_output_body(self, exchange, value):
+        exchange.response['body'] = value
+
     def set_query_string(self, exchange, value):
         exchange.request.query_arguments = \
             parse_qs_bytes(value, keep_blank_values=True)
