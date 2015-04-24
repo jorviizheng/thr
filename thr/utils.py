@@ -7,6 +7,7 @@
 import uuid
 import json
 import six
+import socket
 from six.moves.urllib.parse import urlencode
 from tornado.httpclient import HTTPRequest
 from tornado.httputil import HTTPHeaders
@@ -16,7 +17,17 @@ def make_unique_id():
     return str(uuid.uuid4()).replace('-', '')
 
 
-def serialize_http_request(request, body_link=None, dict_to_inject=None):
+def get_ip():
+    try:
+        result = socket.gethostbyname(socket.getfqdn())
+        if result != '127.0.0.1': 
+            return result
+    except:
+        pass
+
+
+def serialize_http_request(request, body_link=None, dict_to_inject=None,
+                           proxy_ip=None):
     """Serializes a tornado HTTPServerRequest.
 
     Following attributes are used (and only these ones):
@@ -35,6 +46,9 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
             and when you have already uploaded somewhere else.
         dict_to_inject (dict): a dict of (string) keys/values to inject
             inside the serialization.
+        proxy_ip (string): if not None, use this value as the last proxy ip
+            for X-Forwarded-For header ; if the value is AUTO (default), the
+            ip adress will be guess automatically
 
     Returns:
         A string (str), the result of the serialization.
@@ -45,10 +59,17 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None):
             encoded_query_arguments[key] = [x.decode('utf-8') for x in values]
     else:
         encoded_query_arguments = request.query_arguments
+    if proxy_ip == "AUTO":
+        proxy_ip = get_ip()
+    if proxy_ip:
+        if 'X-Forwarded-For' in request.headers:
+            request.headers['X-Forwarded-For'] += ", %s" % proxy_ip
+        else:
+            request.headers['X-Forwarded-For'] = "%s, %s" % (remote_ip,
+                                                             proxy_ip)
     encoded_headers = list(request.headers.get_all())
     res = {"method": request.method,
            "path": request.path,
-           "remote_ip": request.remote_ip,
            "host": request.host}
     if len(encoded_query_arguments) > 0:
         res['query_arguments'] = encoded_query_arguments
@@ -73,15 +94,12 @@ def unserialize_request_message(message, force_host=None):
             value.
 
     Returns:
-        A tuple (object, body_link, http_dict, extra_dict) where:
+        A tuple (object, body_link, extra_dict) where:
             - "object" is a HTTPRequest object initialized by the
             unserialization
             - "body_link" (if not None) is the link to the body (in this case,
             the body attribute is not set in the HTTPRequest object and should
             be set after by the caller)
-            - "http_dict" is a dict of http keys/values not present in the
-            HTTPRequest object (for now, keys are "remote_ip",
-            "host" (original))
             - "extra_dict" is a dict of extra (not HTTP) keys/values injected
             during serialization
 
@@ -90,14 +108,11 @@ def unserialize_request_message(message, force_host=None):
     """
     body_link = None
     extra_dict = {}
-    http_dict = {}
     decoded = json.loads(message)
     if force_host:
         host = force_host
     else:
         host = decoded['host']
-    http_dict['host'] = decoded['host']
-    http_dict['remote_ip'] = decoded['remote_ip']
     if 'query_arguments' in decoded:
         if six.PY2:
             new_qa = {}
@@ -110,10 +125,14 @@ def unserialize_request_message(message, force_host=None):
     else:
         url = "http://%s%s" % (host, decoded['path'])
     kwargs = {}
+    kwargs['headers'] = HTTPHeaders()
     if 'headers' in decoded:
-        kwargs['headers'] = HTTPHeaders()
         for k, v in decoded['headers']:
-            kwargs['headers'].add(k, v)
+            if k.lower() != 'host':
+                kwargs['headers'].add(k, v)
+    kwargs['headers']['Host'] = host
+    if force_host:
+        kwargs['headers']['X-Forwarded-Host'] = decoded['host']
     if 'body_link' in decoded:
         body_link = decoded['body_link']
     else:
@@ -122,7 +141,7 @@ def unserialize_request_message(message, force_host=None):
     request = HTTPRequest(url, method=decoded['method'], **kwargs)
     if 'extra' in decoded:
         extra_dict = decoded['extra']
-    return (request, body_link, http_dict, extra_dict)
+    return (request, body_link, extra_dict)
 
 
 def serialize_http_response(response, body_link=None, dict_to_inject=None):
