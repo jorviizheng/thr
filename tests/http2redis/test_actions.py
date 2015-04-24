@@ -91,12 +91,12 @@ class TestActions(AsyncTestCase):
         request = HTTPServerRequest(method='GET', uri='/')
         exchange = HTTPExchange(request)
         exchange.response['headers'] = headers
-        actions = Actions(del_input_header="Header-Name")
-        actions.execute_input_actions(exchange)
-        keys = list(exchange.request.headers.keys())
+        actions = Actions(del_output_header="Header-Name")
+        actions.execute_output_actions(exchange)
+        keys = list(exchange.response['headers'].keys())
         self.assertEquals(len(keys), 0)
-        actions = Actions(del_input_header="Header-Name2")
-        actions.execute_input_actions(exchange)
+        actions = Actions(del_output_header="Header-Name2")
+        actions.execute_output_actions(exchange)
 
     def test_set_path(self):
         request = HTTPServerRequest(method='GET', uri='/')
