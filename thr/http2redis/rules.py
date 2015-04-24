@@ -113,7 +113,7 @@ class Actions(object):
         self.actions = kwargs
         self.action_names = [
             name for name in dir(self)
-            if name.startswith('set_') or name.startswith('add_') \
+            if name.startswith('set_') or name.startswith('add_')
             or name.startswith('del_')
         ]
 

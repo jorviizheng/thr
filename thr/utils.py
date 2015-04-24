@@ -20,7 +20,7 @@ def make_unique_id():
 def get_ip():
     try:
         result = socket.gethostbyname(socket.getfqdn())
-        if result != '127.0.0.1': 
+        if result != '127.0.0.1':
             return result
     except:
         pass
@@ -65,7 +65,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
         if 'X-Forwarded-For' in request.headers:
             request.headers['X-Forwarded-For'] += ", %s" % proxy_ip
         else:
-            request.headers['X-Forwarded-For'] = "%s, %s" % (remote_ip,
+            request.headers['X-Forwarded-For'] = "%s, %s" % (request.remote_ip,
                                                              proxy_ip)
     encoded_headers = list(request.headers.get_all())
     res = {"method": request.method,
