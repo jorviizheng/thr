@@ -9,9 +9,8 @@ import tornado
 import tornadis
 import toro
 
-from thr.http2redis.limits import
+from thr.http2redis import limits
 from thr.utils import unserialize_http_request, serialize_http_response
-
 
 
 request_queue = toro.Queue()

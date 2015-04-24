@@ -71,5 +71,5 @@ class MaxLimit(Limit):
 class MinRemainingLimit(Limit):
 
     def check_limit(self, value):
-        return self._limit  value
+        return self._limit <= value
 
