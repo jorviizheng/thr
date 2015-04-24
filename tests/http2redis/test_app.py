@@ -97,7 +97,6 @@ class TestApp(AsyncHTTPTestCase):
         yield self.redis.call('LPUSH', self.response_key, 'response-string')
 
         response = yield self.http_client.fetch(self.get_url('/quux'))
-
         self.assertIn('response-string', response.body.decode(),
                       "We should get data from the response queue")
         result = yield self.redis.call('RPOP', self.response_key)

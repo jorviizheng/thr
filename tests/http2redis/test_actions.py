@@ -20,7 +20,7 @@ class TestActions(AsyncTestCase):
         exchange = HTTPExchange(request)
         actions = Actions(set_status_code=201)
         actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.response['status_code'], 201)
+        self.assertEqual(exchange.response.status_code, 201)
 
     def test_set_status_code_with_callable(self):
         def callback(request):
@@ -29,7 +29,7 @@ class TestActions(AsyncTestCase):
         exchange = HTTPExchange(request)
         actions = Actions(set_status_code=callback)
         actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.response['status_code'], 201)
+        self.assertEqual(exchange.response.status_code, 201)
 
     def test_queue_with_callable(self):
         def callback(request):
@@ -59,7 +59,7 @@ class TestActions(AsyncTestCase):
         exchange = HTTPExchange(request)
         actions = Actions(set_status_code=callback)
         yield actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.response['status_code'], 201)
+        self.assertEqual(exchange.response.status_code, 201)
 
     def test_add_input_header(self):
         headers = HTTPHeaders()
@@ -90,10 +90,10 @@ class TestActions(AsyncTestCase):
         headers.add("Header-Name", "header value1")
         request = HTTPServerRequest(method='GET', uri='/')
         exchange = HTTPExchange(request)
-        exchange.response['headers'] = headers
+        exchange.response.headers = headers
         actions = Actions(del_output_header="Header-Name")
         actions.execute_output_actions(exchange)
-        keys = list(exchange.response['headers'].keys())
+        keys = list(exchange.response.headers.keys())
         self.assertEquals(len(keys), 0)
         actions = Actions(del_output_header="Header-Name2")
         actions.execute_output_actions(exchange)
@@ -138,7 +138,7 @@ class TestActions(AsyncTestCase):
         exchange = HTTPExchange(request)
         actions = Actions(set_output_body=b"foobar")
         actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.response['body'], b"foobar")
+        self.assertEqual(exchange.response.body, b"foobar")
 
     def test_set_query_string(self):
         request = HTTPServerRequest(method='GET', uri='/?foo1=bar1')

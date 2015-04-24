@@ -8,7 +8,6 @@ import re
 from fnmatch import fnmatch
 from tornado import gen
 from tornado.escape import parse_qs_bytes
-from tornado.httputil import HTTPHeaders
 
 
 ruleset = []
@@ -179,24 +178,20 @@ class Actions(object):
 
     def set_output_header(self, exchange, value):
         header_name, header_value = value
-        headers = exchange.response.get('headers', HTTPHeaders())
-        headers[header_name] = header_value
+        exchange.response.headers[header_name] = header_value
 
     def add_output_header(self, exchange, value):
         header_name, header_value = value
-        headers = exchange.response.get('headers', HTTPHeaders())
-        headers.add(header_name, header_value)
+        exchange.response.headers.add(header_name, header_value)
 
     def del_output_header(self, exchange, value):
-        if 'headers' not in exchange.response:
-            return
         try:
-            del(exchange.response['headers'][value])
+            del(exchange.response.headers[value])
         except KeyError:
             pass
 
     def set_status_code(self, exchange, value):
-        exchange.response['status_code'] = value
+        exchange.response.status_code = value
 
     def set_queue(self, exchange, value):
         exchange.queue = value
@@ -217,7 +212,7 @@ class Actions(object):
         exchange.request.body = value
 
     def set_output_body(self, exchange, value):
-        exchange.response['body'] = value
+        exchange.response.body = value
 
     def set_query_string(self, exchange, value):
         exchange.request.query_arguments = \
