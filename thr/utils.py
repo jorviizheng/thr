@@ -14,10 +14,22 @@ from tornado.httputil import HTTPHeaders
 
 
 def make_unique_id():
+    """Returns a unique id with only alphanumeric chars.
+
+    Returns:
+        A unique id (string) with only alphanumeric chars.
+    """
     return str(uuid.uuid4()).replace('-', '')
 
 
 def get_ip():
+    """Try to get and return the host ip.
+
+    If the result is 127.0.0.1, None is returned.
+
+    Returns:
+        The host ip (string) or None.
+    """
     try:
         result = socket.gethostbyname(socket.getfqdn())
         if result != '127.0.0.1':
