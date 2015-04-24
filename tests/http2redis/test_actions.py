@@ -2,7 +2,7 @@ from tornado.httputil import HTTPServerRequest, HTTPHeaders
 from tornado import gen
 from tornado.testing import AsyncTestCase, gen_test
 
-from thr.http2redis import HTTPExchange
+from thr.http2redis.exchange import HTTPExchange
 from thr.http2redis.rules import Actions
 
 

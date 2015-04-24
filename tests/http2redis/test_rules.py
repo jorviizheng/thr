@@ -1,7 +1,7 @@
 from tornado.httputil import HTTPServerRequest
 from unittest import TestCase
 
-from thr.http2redis import HTTPExchange
+from thr.http2redis.exchange import HTTPExchange
 from thr.http2redis.rules import Criteria, Actions, Rules, add_rule
 
 

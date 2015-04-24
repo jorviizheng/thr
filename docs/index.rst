@@ -72,7 +72,7 @@ API Reference
  .. autoclass:: thr.http2redis.rules.glob
      :members:
 
- .. autoclass:: thr.http2redis.HTTPExchange
+ .. autoclass:: thr.http2redis.exchange.HTTPExchange
      :members:
  
 

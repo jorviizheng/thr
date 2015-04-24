@@ -100,8 +100,8 @@ class Actions(object):
 
     Each action is supplied as a keyword argument when instanciating
     :class:`Actions` and may be an action-specific value or a callable
-    accepting an :class:`~thr.http2redis.HTTPExchange` as its sole argument and
-    returning a value.
+    accepting an :class:`~thr.http2redis.exchange.HTTPExchange` as its sole
+    argument and returning a value.
 
     Keyword Args:
         set_input_header: a pair of header name and value
@@ -129,7 +129,8 @@ class Actions(object):
         Apply actions to the HTTP exchange.
 
         Args:
-            exchange: An :class:`~thr.http2redis.HTTPExchange` instance
+            exchange: An :class:`~thr.http2redis.exchange.HTTPExchange`
+                instance
             mode (string): input for executing input actions,
                 output for executing output actions
         """

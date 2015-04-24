@@ -11,7 +11,7 @@ from tornado.options import define, options, parse_command_line
 import tornadis
 
 from thr.http2redis.rules import Rules
-from thr.http2redis import HTTPExchange
+from thr.http2redis.exchange import HTTPExchange
 from thr.utils import make_unique_id, serialize_http_request
 
 
