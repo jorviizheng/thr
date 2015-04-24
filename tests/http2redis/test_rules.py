@@ -20,7 +20,7 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/bar'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(HTTPExchange(request))
+        Rules.execute_input_actions(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
     def test_execute_multiple_rules(self):
@@ -29,7 +29,7 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/foo'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(HTTPExchange(request))
+        Rules.execute_input_actions(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'BAR')
 
     def test_stop_option(self):
@@ -38,14 +38,14 @@ class TestRules(TestCase):
         add_rule(Criteria(path='/foo'),
                  Actions(set_input_header=('Header-Name', 'BAR')))
         request = HTTPServerRequest(method='GET', uri='/foo')
-        Rules.execute(HTTPExchange(request))
+        Rules.execute_input_actions(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
     def test_set_queue_based_on_path(self):
         add_rule(Criteria(path='/foo'), Actions(set_queue='test-queue'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)
-        Rules.execute(exchange)
+        Rules.execute_input_actions(exchange)
         self.assertEqual(exchange.queue, 'test-queue')
 
     def test_set_queue_based_on_callable(self):
@@ -62,5 +62,5 @@ class TestRules(TestCase):
                  Actions(set_queue='yes-this-one'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)
-        Rules.execute(exchange)
+        Rules.execute_input_actions(exchange)
         self.assertEqual(exchange.queue, 'yes-this-one')

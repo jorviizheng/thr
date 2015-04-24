@@ -45,14 +45,27 @@ class Handler(RequestHandler):
     def patch(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
 
+    def return_http_reply(self, exchange):
+        status_code = exchange.response.get('status_code', 200)
+        self.set_status(status_code)
+        if 'headers' in exchange.response:
+            for name in exchange.response['headers'].keys():
+                value = exchange.response['headers'][name]
+                self.set_header(name, value)
+        if 'body' in exchange.response:
+            self.finish(exchange.response['body'])
+        else:
+            self.finish()
+
     @gen.coroutine
     def handle(self, *args, **kwargs):
         exchange = HTTPExchange(self.request)
-        yield Rules.execute(exchange)
+        yield Rules.execute_input_actions(exchange)
         if 'status_code' in exchange.response:
-            self.set_status(exchange.response['status_code'])
-            if 'body' in exchange.response:
-                self.finish(exchange.response['body'])
+            # so we don't push the request on redis
+            # let's call output actions for headers and body
+            yield Rules.execute_output_actions(exchange)
+            self.return_http_reply(exchange)
         elif exchange.queue is None:
             self.write("404 Not found")
             self.set_status(404)
@@ -67,7 +80,10 @@ class Handler(RequestHandler):
                 yield redis.call('LPUSH', exchange.queue, serialized_request)
                 result = yield redis.call('BRPOP', response_key, 1)
                 if result:
-                    self.write(result[1])
+                    yield Rules.execute_output_actions(exchange)
+                    if 'body' not in exchange.response:
+                        exchange.response['body'] = result[1]
+                    self.return_http_reply(exchange)
 
 
 def make_app():

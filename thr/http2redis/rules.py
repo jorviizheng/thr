@@ -8,6 +8,7 @@ import re
 from fnmatch import fnmatch
 from tornado import gen
 from tornado.escape import parse_qs_bytes
+from tornado.httputil import HTTPHeaders
 
 
 ruleset = []
@@ -117,20 +118,31 @@ class Actions(object):
             or name.startswith('del_')
         ]
 
+    def execute_output_actions(self, exchange):
+        return self._execute(exchange, "output")
+
+    def execute_input_actions(self, exchange):
+        return self._execute(exchange, "input")
+
     @gen.coroutine
-    def execute(self, exchange):
+    def _execute(self, exchange, mode):
         """
-        Apply actions to the HTTP exchange
+        Apply actions to the HTTP exchange.
 
         Args:
             exchange: An :class:`~thr.http2redis.HTTPExchange` instance
-
-        Return:
-            None
+            mode (string): input for executing input actions,
+                output for executing output actions
         """
+        if mode not in ("input", "output"):
+            raise Exception("mode must be input or output")
         futures = {}
         for action_name in self.action_names:
             action = self.actions.get(action_name)
+            if not action:
+                continue
+            if mode == "output" and "_output_" not in action_name:
+                continue
             if action:
                 if callable(action):
                     value = action(exchange.request)
@@ -143,10 +155,13 @@ class Actions(object):
 
         for action_name in self.action_names:
             action = self.actions.get(action_name)
-            if action:
-                set_value = getattr(self, action_name)
-                value = result_dict[action_name]
-                set_value(exchange, value)
+            if not action:
+                continue
+            if mode == "output" and "_output_" not in action_name:
+                continue
+            set_value = getattr(self, action_name)
+            value = result_dict[action_name]
+            set_value(exchange, value)
 
     def set_input_header(self, exchange, value):
         header_name, header_value = value
@@ -159,6 +174,24 @@ class Actions(object):
     def del_input_header(self, exchange, value):
         try:
             del(exchange.request.headers[value])
+        except KeyError:
+            pass
+
+    def set_output_header(self, exchange, value):
+        header_name, header_value = value
+        headers = exchange.response.get('headers', HTTPHeaders())
+        headers[header_name] = header_value
+
+    def add_output_header(self, exchange, value):
+        header_name, header_value = value
+        headers = exchange.response.get('headers', HTTPHeaders())
+        headers.add(header_name, header_value)
+
+    def del_output_header(self, exchange, value):
+        if 'headers' not in exchange.response:
+            return
+        try:
+            del(exchange.response['headers'][value])
         except KeyError:
             pass
 
@@ -235,12 +268,20 @@ class Rules(object):
         return len(cls.rules)
 
     @classmethod
+    def execute_input_actions(cls, exchange):
+        return cls._execute(exchange, "input")
+
+    @classmethod
+    def execute_output_actions(cls, exchange):
+        return cls._execute(exchange, "output")
+
+    @classmethod
     @gen.coroutine
-    def execute(cls, exchange):
+    def _execute(cls, exchange, mode):
         for rule in cls.rules:
             match = yield rule.criteria.match(exchange.request)
             if match:
-                yield rule.actions.execute(exchange)
+                yield rule.actions._execute(exchange, mode)
                 if rule.stop:
                     return
 
