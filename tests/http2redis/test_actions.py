@@ -159,7 +159,7 @@ class TestActions(AsyncTestCase):
         request = HTTPServerRequest(method='GET', uri='/')
         exchange = HTTPExchange(request)
         actions = Actions(set_output_body=b"foobar")
-        actions.execute_input_actions(exchange)
+        actions.execute_output_actions(exchange)
         self.assertEqual(exchange.response.body, b"foobar")
 
     def test_set_query_string(self):

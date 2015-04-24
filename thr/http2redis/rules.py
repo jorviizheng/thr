@@ -117,12 +117,29 @@ class Actions(object):
             if name.startswith('set_') or name.startswith('add_')
             or name.startswith('del_')
         ]
+        self.action_names.append("custom_input")
+        self.action_names.append("custom_output")
 
     def execute_output_actions(self, exchange):
         return self._execute(exchange, "output")
 
     def execute_input_actions(self, exchange):
         return self._execute(exchange, "input")
+
+    def is_output_action_name(self, action_name):
+        return action_name.endswith('_output') or '_output_' in action_name
+
+    def is_custom_action_name(self, action_name):
+        return action_name.startswith('custom_')
+
+    def action_names_by_mode(self, mode):
+        if mode == 'output':
+            return [x for x in self.action_names
+                    if self.is_output_action_name(x)]
+        if mode == 'input':
+            return [x for x in self.action_names
+                    if not self.is_output_action_name(x)]
+        raise Exception("bad mode value: %s" % mode)
 
     @gen.coroutine
     def _execute(self, exchange, mode):
@@ -138,27 +155,29 @@ class Actions(object):
         if mode not in ("input", "output"):
             raise Exception("mode must be input or output")
         futures = {}
-        for action_name in self.action_names:
+        for action_name in self.action_names_by_mode(mode):
             action = self.actions.get(action_name)
             if not action:
-                continue
-            if mode == "output" and "_output_" not in action_name:
                 continue
             if action:
                 if callable(action):
                     value = action(exchange.request)
                 else:
+                    if self.is_custom_action_name(action_name):
+                        raise Exception("custom_ actions must be callable")
                     value = action
                 future = gen.maybe_future(value)
                 futures[action_name] = future
 
         result_dict = yield futures
 
-        for action_name in self.action_names:
+        for action_name in self.action_names_by_mode(mode):
             action = self.actions.get(action_name)
             if not action:
                 continue
-            if mode == "output" and "_output_" not in action_name:
+            if self.is_custom_action_name(action_name):
+                # If it's a custom action, the exchange object is already
+                # modified
                 continue
             set_value = getattr(exchange, action_name)
             value = result_dict[action_name]
