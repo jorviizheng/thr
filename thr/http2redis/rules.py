@@ -4,42 +4,12 @@
 # This file is part of thr library released under the MIT license.
 # See the LICENSE file for more information.
 
-import re
-from fnmatch import fnmatch
 from tornado import gen
 from thr.http2redis.exchange import HTTPExchange
+from thr.utils import glob, regexp
 
 
 ruleset = []
-regexp = re.compile
-RegexpType = type(re.compile(''))
-
-
-class glob(object):
-    """
-    Adapter providing a regexp-like interface for glob expressions
-
-    Args:
-        pattern: a glob pattern
-
-    >>> glob_obj = glob("*.txt")
-    >>> glob_obj.match("foo.txt")
-    True
-    >>> glob_obj.match("foo.py")
-    False
-    """
-
-    def __init__(self, pattern):
-        self.pattern = pattern
-
-    def match(self, string):
-        """
-        Args:
-            string: a string to match against the glob pattrn
-        Return:
-            bool
-        """
-        return fnmatch(string, self.pattern)
 
 
 class Criteria(object):
@@ -67,7 +37,7 @@ class Criteria(object):
             return True
 
         value = getattr(request, name)
-        if isinstance(criterion, (glob, RegexpType)):
+        if isinstance(criterion, (glob, regexp)):
             return criterion.match(value)
         else:
             return value == criterion
@@ -176,7 +146,7 @@ class Actions(object):
             if not action:
                 continue
             if self.is_custom_action_name(action_name):
-                # If it's a custom action, the exchange object is already
+                # If it's a custom action, the exchange object is already
                 # modified
                 continue
             set_value = getattr(exchange, action_name)

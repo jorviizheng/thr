@@ -5,40 +5,49 @@
 # See the LICENSE file for more information.
 
 
-from utils import glob
+import six
+import tornado
+import tornadis
+from thr.utils import glob, regexp
 
 
-class Hashes(object):
+redis_hash_pool = tornadis.ClientPool()
 
-    hashes = []
 
-    @classmethod
-    def add_hash(cls, hash_func, limits):
-        cls.hashes.append(Limits(hash_func, limits))
-
-    @classmethod
-    def get_hashes(cls, message):
-        return [limit.get_hash(message) for limit in cls.hashes]
+@tornado.gen.coroutine
+def get_busy_workers(hash):
+    with (yield redis_hash_pool.connected_client()) as redis:
+        nb_workers = yield redis.call('GET', hash)
+        raise tornado.gen.Return(nb_workers)
 
 
 class Limits(object):
 
-    def __init__(self, hash_func, limits=[]):
-        self._hash_func = hash_func
-        self._limits = limits
+    limits = {}
 
-    def get_hash(self, message):
-        return self._hash_func(message)
+    @classmethod
+    def reset(cls):
+        cls.limits = {}
 
-    def add_limit(self, limit):
-        self._limits.append(limit)
+    @classmethod
+    def add(cls, hash_func, limit):
+        if hash_func not in cls.limits:
+            cls.limits[hash_func] = [limit]
+        else:
+            cls.limits[hash_func].append(limit)
 
-    def check(self, message, value):
-        hash = self._hash_func(message)
-        for limit in self._limits:
-            if not limit.check(hash, value):
-                return False
-        return True
+    @classmethod
+    def check(cls, message):
+        hashes = []
+        for hash_func, limits in six.iteritems(cls.limits):
+            hash = hash_func(message)
+            if hash:
+                for limit in limits:
+                    if limit.check_hash(hash):
+                        if not limit.check_limit(get_busy_workers(limit.key)):
+                            return False
+                        hashes.append(limit.key)
+        return hashes
 
 
 class Limit(object):
@@ -47,19 +56,21 @@ class Limit(object):
         self._hash = hash
         self._limit = limit
 
+    @property
+    def key(self):
+        if isinstance(self._hash, six.string_types):
+            return self._hash
+        else:
+            return self._hash.pattern
+
     def check_hash(self, hashed_message):
-        if isinstance(self._hash, (glob, RegexpType)):
+        if isinstance(self._hash, (glob, regexp)):
             return self._hash.match(hashed_message)
         else:
             return self._hash == hashed_message
 
     def check_limit(self, value):
         raise NotImplementedError
-
-    def check(self, message, value):
-        if self.check_hash(message):
-            return self.check_limit(limit)
-        return False
 
 
 class MaxLimit(Limit):
@@ -73,3 +84,38 @@ class MinRemainingLimit(Limit):
     def check_limit(self, value):
         return self._limit <= value
 
+
+def add_max_limit(hash_func, hash_value, max_limit):
+    """
+    Add a maximim limit for the specified value of the hash function
+
+    Args:
+        hash_func: a hash function
+        hash_value: a string, :class:`~thr.http2redis.rules.glob` object
+            or a compiled regular expression object
+        max_limit: an int
+
+    Examples:
+        >>> def my_hash(message):
+                return "toto"
+        >>> add_max_limit(my_hash, "toto", 3)
+    """
+    Limits.add(hash_func, MaxLimit(hash_value, max_limit))
+
+
+def add_min_remaining_limit(hash_func, hash_value, min_remaining_limit):
+    """
+    Add a minimum remaining limit for the specified value of the hash function
+
+    Args:
+        hash_func: a hash function
+        hash_value: a string, :class:`~thr.http2redis.rules.glob` object
+            or a compiled regular expression object
+        min_remaining_limit: an int
+
+    Examples:
+        >>> def my_hash(message):
+                return "toto"
+        >>> add_min_remaining_limit(my_hash, "toto", 1)
+    """
+    Limits.add(hash_func, MinRemainingLimit(hash_value, min_remaining_limit))

@@ -8,9 +8,67 @@ import uuid
 import json
 import six
 import socket
+import re
+from fnmatch import fnmatch
 from six.moves.urllib.parse import urlencode
 from tornado.httpclient import HTTPRequest
 from tornado.httputil import HTTPHeaders
+
+
+class glob(object):
+    """
+    Adapter providing a regexp-like interface for glob expressions
+
+    Args:
+        pattern: a glob pattern
+
+    >>> glob_obj = glob("*.txt")
+    >>> glob_obj.match("foo.txt")
+    True
+    >>> glob_obj.match("foo.py")
+    False
+    """
+
+    def __init__(self, pattern):
+        self.pattern = pattern
+
+    def match(self, string):
+        """
+        Args:
+            string: a string to match against the glob pattern
+        Return:
+            bool
+        """
+        return fnmatch(string, self.pattern)
+
+
+class regexp(object):
+    """
+    Shortcut to define regexp expressions,
+    and allow access to the uncompiled pattern
+
+    Args:
+        pattern: a regexp pattern
+
+    >>> regexp_obj = regexp("[a-z]+\.txt")
+    >>> regexp_obj.match("foo.txt")
+    True
+    >>> regexp_obj.match("Foo.txt")
+    False
+    """
+
+    def __init__(self, pattern):
+        self.pattern = pattern
+        self.compiled_re = re.compile(pattern)
+
+    def match(self, string):
+        """
+        Args:
+            string: a string to match against the regexp pattern
+        Return:
+            bool
+        """
+        return self.compiled_re.match(string)
 
 
 def make_unique_id():

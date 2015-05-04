@@ -1,7 +1,8 @@
 from tornado.httputil import HTTPServerRequest
 from tornado import testing
 
-from thr.http2redis.rules import Criteria, regexp, glob
+from thr.http2redis.rules import Criteria
+from thr.utils import regexp, glob
 
 
 class TestCriteria(testing.AsyncTestCase):
