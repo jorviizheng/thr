@@ -21,9 +21,6 @@ def print_exception(future=None):
     import traceback
     exc = future.exc_info()
     if exc is not None:
-        print exc[0]
-        print exc[1]
-        print traceback.format_tb(exc[2])
         raise exc
 
 
