@@ -7,6 +7,7 @@ import tornado
 import tornadis
 from tornado.testing import AsyncTestCase, gen_test
 from tornado.httputil import HTTPServerRequest
+import mock
 
 from six import assertCountEqual
 
@@ -28,9 +29,16 @@ class TestLimits(AsyncTestCase):
     def setUp(self):
         super(TestLimits, self).setUp()
         Limits.reset()
+        self.make_uuid_predictable()
 
     def get_new_ioloop(self):
         return tornado.ioloop.IOLoop.instance()
+
+    def make_uuid_predictable(self):
+        patcher = mock.patch('uuid.uuid4')
+        self.addCleanup(patcher.stop)
+        mock_object = patcher.start()
+        mock_object.return_value = "uuid"
 
     def test_add_limit(self):
         add_max_limit(uri_hash_func, "/foo", 4)
@@ -49,19 +57,19 @@ class TestLimits(AsyncTestCase):
 
         client = tornadis.Client()
         yield client.connect()
-        yield client.call('SET', '/foo', 3)
+        yield client.call('SET', 'uuid_/foo', 3)
 
         message = HTTPServerRequest("GET", "/foo")
         hashes = yield Limits.check(message)
-        self.assertEqual(hashes, ["/foo"])
+        self.assertEqual(hashes, ["uuid_/foo"])
 
-        yield client.call('SET', 'POST', 0)
+        yield client.call('SET', 'uuid_POST', 0)
         message = HTTPServerRequest("POST", "/foo")
         hashes = yield Limits.check(message)
         self.assertFalse(hashes)
 
-        yield client.call('DEL', '/foo')
-        yield client.call('DEL', 'POST')
+        yield client.call('DEL', 'uuid_/foo')
+        yield client.call('DEL', 'uuid_POST')
         yield client.disconnect()
 
     @gen_test
@@ -73,24 +81,24 @@ class TestLimits(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
 
-        yield client.call('SET', '/foo', 3)
+        yield client.call('SET', 'uuid_/foo', 3)
         message = HTTPServerRequest("GET", "/foo")
         hashes = yield Limits.check(message)
-        self.assertEqual(hashes, ["/foo"])
+        self.assertEqual(hashes, ["uuid_/foo"])
 
-        yield client.call('SET', 'POST', 1)
+        yield client.call('SET', 'uuid_POST', 1)
         message = HTTPServerRequest("POST", "/foo")
         hashes = yield Limits.check(message)
-        assertCountEqual(self, hashes, ["/foo", "POST"])
+        assertCountEqual(self, hashes, ["uuid_/foo", "uuid_POST"])
 
-        yield client.call('SET', '/bar', 4)
+        yield client.call('SET', 'uuid_/bar', 4)
         message = HTTPServerRequest("GET", "/bar")
         hashes = yield Limits.check(message)
         self.assertFalse(hashes)
 
-        yield client.call('DEL', '/foo')
-        yield client.call('DEL', 'POST')
-        yield client.call('DEL', '/bar')
+        yield client.call('DEL', 'uuid_/foo')
+        yield client.call('DEL', 'uuid_POST')
+        yield client.call('DEL', 'uuid_/bar')
         yield client.disconnect()
 
     @gen_test
@@ -100,21 +108,21 @@ class TestLimits(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
 
-        yield client.call('SET', '/foo*', 3)
+        yield client.call('SET', 'uuid_/foo*', 3)
         message = HTTPServerRequest("GET", "/foo")
         hashes = yield Limits.check(message)
         self.assertFalse(hashes)
 
-        yield client.call('SET', '/foo*', 0)
+        yield client.call('SET', 'uuid_/foo*', 0)
         message = HTTPServerRequest("GET", "/bar")
         hashes = yield Limits.check(message)
         self.assertEqual(hashes, [])
 
         message = HTTPServerRequest("GET", "/foobar")
         hashes = yield Limits.check(message)
-        self.assertEqual(hashes, ["/foo*"])
+        self.assertEqual(hashes, ["uuid_/foo*"])
 
-        yield client.call('DEL', '/foo*')
+        yield client.call('DEL', 'uuid_/foo*')
         yield client.disconnect()
 
     @gen_test
@@ -124,19 +132,19 @@ class TestLimits(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
 
-        yield client.call('SET', '[A-Z]{4}', 3)
+        yield client.call('SET', 'uuid_[A-Z]{4}', 3)
         message = HTTPServerRequest("GET", "/foo")
         hashes = yield Limits.check(message)
         self.assertEqual(hashes, [])
 
         message = HTTPServerRequest("HEAD", "/foo")
         hashes = yield Limits.check(message)
-        self.assertEqual(hashes, ["[A-Z]{4}"])
+        self.assertEqual(hashes, ["uuid_[A-Z]{4}"])
 
-        yield client.call('SET', '[A-Z]{4}', 0)
+        yield client.call('SET', 'uuid_[A-Z]{4}', 0)
         message = HTTPServerRequest("POST", "/foo")
         hashes = yield Limits.check(message)
         self.assertFalse(hashes)
 
-        yield client.call('DEL', '[A-Z]{4}')
+        yield client.call('DEL', 'uuid_[A-Z]{4}')
         yield client.disconnect()

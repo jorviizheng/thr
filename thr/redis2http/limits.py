@@ -7,23 +7,15 @@
 
 import six
 import tornado
-import tornadis
+import uuid
 from thr.utils import glob, regexp
-
-
-redis_hash_pool = tornadis.ClientPool()
-
-
-@tornado.gen.coroutine
-def get_busy_workers(hash):
-    with (yield redis_hash_pool.connected_client()) as redis:
-        nb_workers = yield redis.call('GET', hash)
-    raise tornado.gen.Return(int(nb_workers))
+import thr.redis2http.app
 
 
 class Limits(object):
 
     limits = {}
+    function_ids = {}
 
     @classmethod
     def reset(cls):
@@ -33,6 +25,7 @@ class Limits(object):
     def add(cls, hash_func, limit):
         if hash_func not in cls.limits:
             cls.limits[hash_func] = [limit]
+            cls.function_ids[hash_func] = uuid.uuid4()
         else:
             cls.limits[hash_func].append(limit)
 
@@ -44,11 +37,13 @@ class Limits(object):
             hash = hash_func(message)
             if hash:
                 for limit in limits:
+                    counter = cls.function_ids[hash_func]+'_'+limit.key
                     if limit.check_hash(hash):
-                        current_workers = yield get_busy_workers(limit.key)
+                        current_workers = \
+                            yield thr.redis2http.app.get_busy_workers(counter)
                         if not limit.check_limit(current_workers):
                             raise tornado.gen.Return(None)
-                        hashes.append(limit.key)
+                        hashes.append(counter)
         raise tornado.gen.Return(hashes)
 
 

@@ -19,6 +19,13 @@ redis_hash_pool = tornadis.ClientPool()
 
 
 @tornado.gen.coroutine
+def get_busy_workers(hash):
+    with (yield redis_hash_pool.connected_client()) as redis:
+        nb_workers = yield redis.call('GET', hash)
+    raise tornado.gen.Return(int(nb_workers))
+
+
+@tornado.gen.coroutine
 def request_redis_handler(queue):
     # Needs to be rewritten : there is several redis keys to check,
     # and it must be done in an intelligent way

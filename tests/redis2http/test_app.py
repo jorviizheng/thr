@@ -29,9 +29,16 @@ class TestRedis2HttpApp(AsyncTestCase):
     def setUp(self):
         super(TestRedis2HttpApp, self).setUp()
         Limits.reset()
+        self.make_uuid_predictable()
 
     def get_new_ioloop(self):
         return tornado.ioloop.IOLoop.instance()
+
+    def make_uuid_predictable(self):
+        patcher = patch('uuid.uuid4')
+        self.addCleanup(patcher.stop)
+        mock_object = patcher.start()
+        mock_object.return_value = "uuid"
 
     @gen_test
     def test_request_handler(self):
@@ -168,8 +175,8 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         client = tornadis.Client()
         yield client.connect()
-        yield client.call('DEL', '*/foo')
-        yield client.call('SET', '*/foo', 1)
+        yield client.call('DEL', 'uuid_*/foo')
+        yield client.call('SET', 'uuid_*/foo', 1)
 
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
         serialized_message = \
@@ -179,8 +186,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         self.io_loop.add_future(request_toro_handler(), raise_exception)
 
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        foo_counter = yield client.call('GET', '*/foo')
-        yield client.call('DEL', '*/foo')
+        foo_counter = yield client.call('GET', 'uuid_*/foo')
+        yield client.call('DEL', 'uuid_*/foo')
         yield client.disconnect()
 
         self.assertEqual(foo_counter.decode(), u'1')
@@ -196,8 +203,8 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         client = tornadis.Client()
         yield client.connect()
-        yield client.call('DEL', '*/foo')
-        yield client.call('SET', '*/foo', 3)
+        yield client.call('DEL', 'uuid_*/foo')
+        yield client.call('SET', 'uuid_*/foo', 3)
 
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
         serialized_message = \
@@ -207,7 +214,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         self.io_loop.add_future(request_toro_handler(), raise_exception)
 
         _, serialized_request = yield client.call('BRPOP', 'test_queue', 0)
-        yield client.call('DEL', '*/foo')
+        yield client.call('DEL', 'uuid_*/foo')
         yield client.disconnect()
 
         self.assertEqual(
