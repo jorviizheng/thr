@@ -29,7 +29,7 @@ doc:
 	cd docs && make html
 
 test:
-	flake8 --exclude=docs/*,examples/* .
+	flake8 --exclude=docs/*,examples/*,.tox/* .
 	nosetests
 
 coveralls:
