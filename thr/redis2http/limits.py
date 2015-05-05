@@ -18,7 +18,7 @@ redis_hash_pool = tornadis.ClientPool()
 def get_busy_workers(hash):
     with (yield redis_hash_pool.connected_client()) as redis:
         nb_workers = yield redis.call('GET', hash)
-        raise tornado.gen.Return(nb_workers)
+    raise tornado.gen.Return(int(nb_workers))
 
 
 class Limits(object):
@@ -37,6 +37,7 @@ class Limits(object):
             cls.limits[hash_func].append(limit)
 
     @classmethod
+    @tornado.gen.coroutine
     def check(cls, message):
         hashes = []
         for hash_func, limits in six.iteritems(cls.limits):
@@ -44,10 +45,11 @@ class Limits(object):
             if hash:
                 for limit in limits:
                     if limit.check_hash(hash):
-                        if not limit.check_limit(get_busy_workers(limit.key)):
-                            return False
+                        current_workers = yield get_busy_workers(limit.key)
+                        if not limit.check_limit(current_workers):
+                            raise tornado.gen.Return(None)
                         hashes.append(limit.key)
-        return hashes
+        raise tornado.gen.Return(hashes)
 
 
 class Limit(object):

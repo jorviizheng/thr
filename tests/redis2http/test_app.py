@@ -6,19 +6,19 @@
 import tornado
 from tornado.testing import AsyncTestCase, gen_test
 import tornadis
-import unittest
 from mock import patch
+import json
 
 from six.moves import cStringIO
 
 from thr.redis2http.app import request_redis_handler, request_queue
 from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
-from thr.utils import serialize_http_request, serialize_http_response
+from thr.redis2http.limits import Limits, add_max_limit
+from thr.utils import serialize_http_request, serialize_http_response, glob
 
 
-def print_exception(future=None):
-    import traceback
+def raise_exception(future=None):
     exc = future.exc_info()
     if exc is not None:
         raise exc
@@ -28,6 +28,7 @@ class TestRedis2HttpApp(AsyncTestCase):
 
     def setUp(self):
         super(TestRedis2HttpApp, self).setUp()
+        Limits.reset()
 
     def get_new_ioloop(self):
         return tornado.ioloop.IOLoop.instance()
@@ -35,7 +36,7 @@ class TestRedis2HttpApp(AsyncTestCase):
     @gen_test
     def test_request_handler(self):
         self.io_loop.add_future(request_redis_handler('test_queue'),
-                                print_exception)
+                                raise_exception)
 
         self.assertEqual(request_queue.qsize(), 0)
 
@@ -47,7 +48,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('LPUSH', 'test_queue', serialized_message)
 
         res = yield request_queue.get()
-        self.assertItemsEqual(res, ['test_queue', serialized_message])
+        self.assertEqual(res[0].decode(), u'test_queue')
+        self.assertEqual(res[1].decode(), serialized_message)
 
         yield client.call('DEL', 'test_queue')
         yield client.disconnect()
@@ -79,9 +81,9 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('DEL', 'hash_2')
         yield client.disconnect()
 
-        self.assertEqual(response, 'This should be an HttpResponse')
-        self.assertEqual(hash_1, '1')
-        self.assertEqual(hash_2, '4')
+        self.assertEqual(response, u'This should be an HttpResponse')
+        self.assertEqual(hash_1.decode(), u'1')
+        self.assertEqual(hash_2.decode(), u'4')
         fetch_patcher.stop()
 
     @gen_test
@@ -90,6 +92,8 @@ class TestRedis2HttpApp(AsyncTestCase):
                                                  method="GET")
         response = tornado.httpclient.HTTPResponse(request, 200,
                                                    buffer=cStringIO("bar"))
+        response_future = tornado.concurrent.Future()
+        response_future.set_result(response)
 
         client = tornadis.Client()
         yield client.connect()
@@ -100,43 +104,113 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('SET', 'hash_2', 4)
 
         self.io_loop.add_callback(finalize_request, 'test_key',
-                                  ['hash_1', 'hash_2'], response)
+                                  ['hash_1', 'hash_2'], response_future)
 
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
         hash_1 = yield client.call('GET', 'hash_1')
         hash_2 = yield client.call('GET', 'hash_2')
 
         self.assertEqual(serialize_http_response(response),
-                         serialized_response)
-        self.assertEqual(hash_1, '0')
-        self.assertEqual(hash_2, '3')
+                         serialized_response.decode())
+        self.assertEqual(hash_1.decode(), u'0')
+        self.assertEqual(hash_2.decode(), u'3')
 
         yield client.call('DEL', 'test_key')
         yield client.call('DEL', 'hash_1')
         yield client.call('DEL', 'hash_2')
         yield client.disconnect()
 
-    @unittest.skip("Not working yet")
     @gen_test
     def test_toro_handler(self):
         @tornado.gen.coroutine
         def test_fetch(request, **kwargs):
-            raise tornado.gen.Return('This should be an HttpResponse')
+            raise tornado.gen.Return(
+                tornado.httpclient.HTTPResponse(request, 200,
+                                                buffer=cStringIO("bar")))
 
         fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
         fetch_mock = fetch_patcher.start()
         fetch_mock.side_effect = test_fetch
+
+        Limits.reset()
 
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
         yield request_queue.put(['test_queue', serialized_message])
-        self.io_loop.add_future(request_toro_handler(), print_exception)
+        self.io_loop.add_future(request_toro_handler(), raise_exception)
 
         client = tornadis.Client()
         yield client.connect()
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
         yield client.disconnect()
 
-        self.assertEqual('toto', serialized_response)
+        self.assertEqual(
+            {u"body": u"bar", u"status_code": 200, u"headers": []},
+            json.loads(serialized_response.decode()))
+        fetch_mock = fetch_patcher.stop()
+
+    @gen_test
+    def test_toro_handler_with_limits(self):
+        @tornado.gen.coroutine
+        def test_fetch(request, **kwargs):
+            raise tornado.gen.Return(
+                tornado.httpclient.HTTPResponse(request, 200,
+                                                buffer=cStringIO("bar")))
+
+        fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
+        fetch_mock = fetch_patcher.start()
+        fetch_mock.side_effect = test_fetch
+
+        Limits.reset()
+        add_max_limit(lambda r: r.url, glob("*/foo"), 3)
+
+        client = tornadis.Client()
+        yield client.connect()
+        yield client.call('DEL', '*/foo')
+        yield client.call('SET', '*/foo', 1)
+
+        request = tornado.httputil.HTTPServerRequest("GET", "/foo")
+        serialized_message = \
+            serialize_http_request(request,
+                                   dict_to_inject={"response_key": "test_key"})
+        yield request_queue.put(['test_queue', serialized_message])
+        self.io_loop.add_future(request_toro_handler(), raise_exception)
+
+        _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
+        foo_counter = yield client.call('GET', '*/foo')
+        yield client.call('DEL', '*/foo')
+        yield client.disconnect()
+
+        self.assertEqual(foo_counter.decode(), u'1')
+        self.assertEqual(
+            {u"body": u"bar", u"status_code": 200, u"headers": []},
+            json.loads(serialized_response.decode()))
+        fetch_mock = fetch_patcher.stop()
+
+    @gen_test
+    def test_toro_handler_reinject(self):
+        Limits.reset()
+        add_max_limit(lambda r: r.url, glob("*/foo"), 3)
+
+        client = tornadis.Client()
+        yield client.connect()
+        yield client.call('DEL', '*/foo')
+        yield client.call('SET', '*/foo', 3)
+
+        request = tornado.httputil.HTTPServerRequest("GET", "/foo")
+        serialized_message = \
+            serialize_http_request(request,
+                                   dict_to_inject={"response_key": "test_key"})
+        yield request_queue.put(['test_queue', serialized_message])
+        self.io_loop.add_future(request_toro_handler(), raise_exception)
+
+        _, serialized_request = yield client.call('BRPOP', 'test_queue', 0)
+        yield client.call('DEL', '*/foo')
+        yield client.disconnect()
+
+        self.assertEqual(
+            {u'extra': {u'response_key': u'test_key'}, u'host': u'127.0.0.1',
+             u'method': u'GET', u'path': u'/foo'},
+            json.loads(serialized_request.decode()))

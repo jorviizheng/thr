@@ -35,14 +35,15 @@ def finalize_request(response_key, hashes, response):
     Callback to upload the http response on redis,
     and update the workers counters for each hash
     """
-    pipeline = tornadis.Pipeline()
-    for hash in hashes:
-        pipeline.stack_call('DECR', hash)
-    with (yield redis_hash_pool.connected_client()) as redis:
-        yield redis.call(pipeline)
+    if hashes:
+        pipeline = tornadis.Pipeline()
+        for hash in hashes:
+            pipeline.stack_call('DECR', hash)
+        with (yield redis_hash_pool.connected_client()) as redis:
+            yield redis.call(pipeline)
     with (yield redis_request_pool.connected_client()) as redis:
         yield redis.call('LPUSH', response_key,
-                         serialize_http_response(response))
+                         serialize_http_response(response.result()))
 
 
 @tornado.gen.coroutine
@@ -50,11 +51,12 @@ def process_request(request, hashes):
     """
     Update the workers counters for each hash and send the request to a worker
     """
-    pipeline = tornadis.Pipeline()
-    for hash in hashes:
-        pipeline.stack_call('INCR', hash)
-    with (yield redis_hash_pool.connected_client()) as redis:
-        yield redis.call(pipeline)
+    if hashes:
+        pipeline = tornadis.Pipeline()
+        for hash in hashes:
+            pipeline.stack_call('INCR', hash)
+        with (yield redis_hash_pool.connected_client()) as redis:
+            yield redis.call(pipeline)
     async_client = tornado.httpclient.AsyncHTTPClient()
     response = yield async_client.fetch(request)
     raise tornado.gen.Return(response)
@@ -74,7 +76,7 @@ def request_toro_handler():
                                     force_host="localhost:8082")  # fix
     # Need to get the body if body_link is provided
 
-    hashes = Limits.check(request)
+    hashes = yield Limits.check(request)
     if hashes is None:
         # reupload the request to the bus
         with (yield redis_request_pool.connected_client()) as redis:
