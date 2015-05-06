@@ -13,13 +13,27 @@ import tornadis
 from thr.http2redis.rules import Rules
 from thr.http2redis.exchange import HTTPExchange
 from thr.utils import make_unique_id, serialize_http_request
-
-
-redis_pool = tornadis.ClientPool()
+from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
 
 
 define("config", help="Path to config file")
-define("port", type=int, default=8888, help="Server port")
+define("port", type=int, default=8888, help="Listening port")
+define("redis_host", default=DEFAULT_REDIS_HOST,
+       help="Default redis server hostname or ip")
+define("redis_port", default=DEFAULT_REDIS_PORT, type=int,
+       help="Default redis server port")
+define("redis_queue", default=DEFAULT_REDIS_QUEUE,
+       help="Default redis queue")
+
+redis_pools = {}
+
+
+def get_redis_pool(host, port):
+    global redis_pools
+    key = "%s:%i" % (host, port)
+    if key not in redis_pools:
+        redis_pools[key] = tornadis.ClientPool()
+    return redis_pools[key]
 
 
 class Handler(RequestHandler):
@@ -58,17 +72,22 @@ class Handler(RequestHandler):
 
     @gen.coroutine
     def handle(self, *args, **kwargs):
-        exchange = HTTPExchange(self.request)
+        exchange = HTTPExchange(self.request,
+                                default_redis_host=options.redis_host,
+                                default_redis_port=options.redis_port,
+                                default_redis_queue=options.redis_queue)
         yield Rules.execute_input_actions(exchange)
         if exchange.response.status_code is not None:
             # so we don't push the request on redis
             # let's call output actions for headers and body
             yield Rules.execute_output_actions(exchange)
             self.return_http_reply(exchange)
-        elif exchange.queue is None:
+        elif exchange.redis_queue == "null":
             self.write("404 Not found")
             self.set_status(404)
         else:
+            redis_pool = get_redis_pool(exchange.redis_host,
+                                        exchange.redis_port)
             with (yield redis_pool.connected_client()) as redis:
                 response_key = make_unique_id()
                 serialized_request = serialize_http_request(
@@ -76,7 +95,8 @@ class Handler(RequestHandler):
                     dict_to_inject={
                         'response_key': response_key
                     })
-                yield redis.call('LPUSH', exchange.queue, serialized_request)
+                yield redis.call('LPUSH', exchange.redis_queue,
+                                 serialized_request)
                 result = yield redis.call('BRPOP', response_key, 1)
                 if result:
                     yield Rules.execute_output_actions(exchange)

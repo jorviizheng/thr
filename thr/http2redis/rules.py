@@ -76,7 +76,7 @@ class Actions(object):
     Keyword Args:
         set_input_header: a pair of header name and value
         set_status_code: and HTTP response status code
-        set_queue: the name of a Redis queue in which to push the request
+        set_redis_queue: the name of a Redis queue in which to push the request
         [...]
     """
 
@@ -143,7 +143,7 @@ class Actions(object):
 
         for action_name in self.action_names_by_mode(mode):
             action = self.actions.get(action_name)
-            if not action:
+            if action is None:
                 continue
             if self.is_custom_action_name(action_name):
                 # If it's a custom action, the exchange object is already
@@ -151,7 +151,8 @@ class Actions(object):
                 continue
             set_value = getattr(exchange, action_name)
             value = result_dict[action_name]
-            set_value(value)
+            if value is not None:
+                set_value(value)
 
 
 class Rule(object):
