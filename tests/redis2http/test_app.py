@@ -94,6 +94,28 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_patcher.stop()
 
     @gen_test
+    def test_process_request_with_body_link(self):
+        @tornado.gen.coroutine
+        def test_fetch(request, **kwargs):
+            if request == "this is a body_link":
+                raise tornado.gen.Return('There is your body')
+            # We return the request to check it has been
+            # correctly updated with the body
+            raise tornado.gen.Return(request)
+
+        fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
+        fetch_mock = fetch_patcher.start()
+        fetch_mock.side_effect = test_fetch
+
+        request = tornado.httpclient.HTTPRequest("http://localhost/foo",
+                                                 method="GET")
+        response = yield process_request(request, [], "this is a body_link")
+
+        self.assertEqual(response.url, u'http://localhost/foo')
+        self.assertEqual(response.body.decode(), u'There is your body')
+        fetch_patcher.stop()
+
+    @gen_test
     def test_finalize_request(self):
         request = tornado.httpclient.HTTPRequest("http://localhost/foo",
                                                  method="GET")

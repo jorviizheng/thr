@@ -54,17 +54,22 @@ def finalize_request(response_key, hashes, response):
 
 
 @tornado.gen.coroutine
-def process_request(request, hashes):
+def process_request(request, hashes, body_link=None):
     """
     Update the workers counters for each hash and send the request to a worker
     """
+    async_client = tornado.httpclient.AsyncHTTPClient()
+    if body_link:
+        body = async_client.fetch(body_link)
+        # TODO : body uploaded on redis ?
     if hashes:
         pipeline = tornadis.Pipeline()
         for hash in hashes:
             pipeline.stack_call('INCR', hash)
         with (yield redis_hash_pool.connected_client()) as redis:
             yield redis.call(pipeline)
-    async_client = tornado.httpclient.AsyncHTTPClient()
+    if body_link:
+        request.body = yield body
     response = yield async_client.fetch(request)
     raise tornado.gen.Return(response)
 
@@ -81,7 +86,6 @@ def request_toro_handler():
     request, body_link, extra_dict = \
         unserialize_request_message(serialized_request,
                                     force_host="localhost:8082")  # fix
-    # Need to get the body if body_link is provided
 
     hashes = yield Limits.check(request)
     if hashes is None:
@@ -91,5 +95,5 @@ def request_toro_handler():
             yield redis.call('LPUSH', origin_queue, serialized_request)
     else:
         tornado.ioloop.IOLoop.instance().add_future(
-            process_request(request, hashes),
+            process_request(request, hashes, body_link),
             partial(finalize_request, extra_dict["response_key"], hashes))
