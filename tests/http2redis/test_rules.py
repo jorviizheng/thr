@@ -41,14 +41,14 @@ class TestRules(TestCase):
         Rules.execute_input_actions(HTTPExchange(request))
         self.assertEqual(request.headers['Header-Name'], 'FOO')
 
-    def test_set_queue_based_on_path(self):
-        add_rule(Criteria(path='/foo'), Actions(set_queue='test-queue'))
+    def test_set_redis_queue_based_on_path(self):
+        add_rule(Criteria(path='/foo'), Actions(set_redis_queue='test-queue'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)
         Rules.execute_input_actions(exchange)
-        self.assertEqual(exchange.queue, 'test-queue')
+        self.assertEqual(exchange.redis_queue, 'test-queue')
 
-    def test_set_queue_based_on_callable(self):
+    def test_set_redis_queue_based_on_callable(self):
 
         def callback_false(request):
             return False
@@ -57,10 +57,10 @@ class TestRules(TestCase):
             return True
 
         add_rule(Criteria(request=callback_false),
-                 Actions(set_queue='not-this-one'), stop=1)
+                 Actions(set_redis_queue='not-this-one'), stop=1)
         add_rule(Criteria(request=callback_true),
-                 Actions(set_queue='yes-this-one'))
+                 Actions(set_redis_queue='yes-this-one'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)
         Rules.execute_input_actions(exchange)
-        self.assertEqual(exchange.queue, 'yes-this-one')
+        self.assertEqual(exchange.redis_queue, 'yes-this-one')

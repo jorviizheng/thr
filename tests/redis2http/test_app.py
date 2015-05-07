@@ -16,6 +16,7 @@ from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
 from thr.redis2http.limits import Limits, add_max_limit
 from thr.utils import serialize_http_request, serialize_http_response, glob
+from thr.utils import unserialize_response_message
 
 
 def raise_exception(future=None):
@@ -175,9 +176,11 @@ class TestRedis2HttpApp(AsyncTestCase):
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
         yield client.disconnect()
 
-        self.assertEqual(
-            {u"body": u"bar", u"status_code": 200, u"headers": []},
-            json.loads(serialized_response.decode()))
+        (status_code, body, _, headers, _) = \
+            unserialize_response_message(serialized_response.decode())
+        self.assertEqual(status_code, 200)
+        self.assertEqual(body, u"bar")
+        self.assertEqual(len(headers), 0)
         fetch_mock = fetch_patcher.stop()
 
     @gen_test
@@ -213,9 +216,11 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.disconnect()
 
         self.assertEqual(foo_counter.decode(), u'1')
-        self.assertEqual(
-            {u"body": u"bar", u"status_code": 200, u"headers": []},
-            json.loads(serialized_response.decode()))
+        (status_code, body, _, headers, _) = \
+            unserialize_response_message(serialized_response.decode())
+        self.assertEqual(status_code, 200)
+        self.assertEqual(body, u"bar")
+        self.assertEqual(len(headers), 0)
         fetch_mock = fetch_patcher.stop()
 
     @gen_test

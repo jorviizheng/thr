@@ -45,9 +45,9 @@ class TestActions(AsyncTestCase):
             return 'test-queue'
         request = HTTPServerRequest(method='GET', uri='/')
         exchange = HTTPExchange(request)
-        actions = Actions(set_queue=callback)
+        actions = Actions(set_redis_queue=callback)
         actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.queue, 'test-queue')
+        self.assertEqual(exchange.redis_queue, 'test-queue')
 
     def test_set_input_header_with_callable(self):
         def callback(request):
@@ -147,6 +147,20 @@ class TestActions(AsyncTestCase):
         actions = Actions(set_remote_ip="1.2.3.4")
         actions.execute_input_actions(exchange)
         self.assertEqual(exchange.request.remote_ip, "1.2.3.4")
+
+    def test_set_redis_host(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_redis_host="foo")
+        actions.execute_input_actions(exchange)
+        self.assertEqual(exchange.redis_host, "foo")
+
+    def test_set_redis_port(self):
+        request = HTTPServerRequest(method='GET', uri='/')
+        exchange = HTTPExchange(request)
+        actions = Actions(set_redis_port=1234)
+        actions.execute_input_actions(exchange)
+        self.assertEqual(exchange.redis_port, 1234)
 
     def test_set_input_body(self):
         request = HTTPServerRequest(method='PUT', uri='/')

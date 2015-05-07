@@ -54,6 +54,7 @@ class TestApp(AsyncHTTPTestCase):
         return app.make_app()
 
     def add_basic_rules(self):
+        add_rule(Criteria(path="/baz"), Actions(set_redis_queue="null"))
         add_rule(Criteria(path='/foo'), Actions(set_status_code=201))
         add_rule(Criteria(path='/bar'), Actions(set_status_code=202))
 
@@ -80,7 +81,7 @@ class TestApp(AsyncHTTPTestCase):
 
     @gen_test
     def test_write_something_to_queue(self):
-        add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
         yield self.redis.connect()
         yield self.redis.call('DEL', 'test-queue')
         yield self.http_client.fetch(self.get_url('/quux'))
@@ -91,7 +92,7 @@ class TestApp(AsyncHTTPTestCase):
 
     @gen_test
     def test_read_something_from_response_key(self):
-        add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
         yield self.redis.connect()
         yield self.redis.call('DEL', self.response_key)
         yield self.redis.call('LPUSH', self.response_key, 'response-string')
@@ -110,9 +111,10 @@ class TestApp(AsyncHTTPTestCase):
             yield tornado.gen.maybe_future(None)
             raise tornado.gen.Return(False)
 
-        add_rule(Criteria(path=coroutine_rule), Actions(set_queue='no-match'),
+        add_rule(Criteria(path=coroutine_rule),
+                 Actions(set_redis_queue='no-match'),
                  stop=1)
-        add_rule(Criteria(path='/quux'), Actions(set_queue='test-queue'))
+        add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
         yield self.http_client.fetch(self.get_url('/quux'))
         yield self.redis.connect()
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
@@ -129,9 +131,9 @@ class TestApp(AsyncHTTPTestCase):
             raise tornado.gen.Return(True)
 
         add_rule(Criteria(request=coroutine_rule),
-                 Actions(set_queue='test-queue'),
+                 Actions(set_redis_queue='test-queue'),
                  stop=1)
-        add_rule(Criteria(path='/quux'), Actions(set_queue='no-match'))
+        add_rule(Criteria(path='/quux'), Actions(set_redis_queue='no-match'))
         yield self.http_client.fetch(self.get_url('/quux'))
         yield self.redis.connect()
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
@@ -149,7 +151,7 @@ class TestApp(AsyncHTTPTestCase):
 
         add_rule(Criteria(path='/quux'),
                  Actions(set_status_code=coroutine_action,
-                         set_queue='test-queue'),
+                         set_redis_queue='test-queue'),
                  stop=1)
         response = yield self.http_client.fetch(self.get_url('/quux'))
         self.assertEqual(response.code, 202)

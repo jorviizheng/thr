@@ -5,6 +5,7 @@
 # See the LICENSE file for more information.
 
 import uuid
+import base64
 import json
 import six
 import socket
@@ -149,7 +150,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
         res['body_link'] = body_link
     else:
         if len(request.body) > 0:
-            res['body'] = request.body
+            res['body'] = base64.standard_b64encode(request.body)
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
@@ -207,7 +208,7 @@ def unserialize_request_message(message, force_host=None):
         body_link = decoded['body_link']
     else:
         if 'body' in decoded:
-            kwargs['body'] = decoded['body']
+            kwargs['body'] = base64.standard_b64decode(decoded['body'])
     request = HTTPRequest(url, method=decoded['method'], **kwargs)
     if 'extra' in decoded:
         extra_dict = decoded['extra']
@@ -238,7 +239,7 @@ def serialize_http_response(response, body_link=None, dict_to_inject=None):
     if body_link is not None:
         res['body_link'] = body_link
     else:
-        res['body'] = response.body
+        res['body'] = base64.standard_b64encode(response.body)
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
@@ -271,7 +272,7 @@ def unserialize_response_message(message):
         body_link = decoded['body_link']
     status_code = decoded['status_code']
     if body_link is None:
-        body = decoded['body']
+        body = base64.standard_b64decode(decoded['body'])
     headers = HTTPHeaders()
     for k, v in decoded['headers']:
         headers.add(k, v)

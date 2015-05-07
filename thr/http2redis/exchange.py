@@ -6,6 +6,7 @@
 
 from tornado.httputil import HTTPHeaders
 from tornado.escape import parse_qs_bytes
+from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
 
 
 class HTTPExchangeResponse(object):
@@ -26,13 +27,20 @@ class HTTPExchange(object):
     Attributes:
         request: A Tornado HTTPServerRequest object.
         response: a HTTPExchangeResponse object.
-        queue: the name of the Redis queue where to push the request.
+        redis_server: the hostname or ip of the redis server where to
+            push the request.
+        redis_port: the port of the redis server where to push the request.
+        redis_queue: the name of the redis queue where to push the request.
     """
 
-    def __init__(self, request):
+    def __init__(self, request, default_redis_host=DEFAULT_REDIS_HOST,
+                 default_redis_port=DEFAULT_REDIS_PORT,
+                 default_redis_queue=DEFAULT_REDIS_QUEUE):
         self.request = request
         self.response = HTTPExchangeResponse()
-        self.queue = None
+        self.redis_host = default_redis_host
+        self.redis_port = default_redis_port
+        self.redis_queue = default_redis_queue
 
     def set_input_header(self, value):
         header_name, header_value = value
@@ -65,8 +73,14 @@ class HTTPExchange(object):
     def set_status_code(self, value):
         self.response.status_code = value
 
-    def set_queue(self, value):
-        self.queue = value
+    def set_redis_queue(self, value):
+        self.redis_queue = value
+
+    def set_redis_host(self, value):
+        self.redis_host = value
+
+    def set_redis_port(self, value):
+        self.redis_port = value
 
     def set_path(self, value):
         self.request.path = value
