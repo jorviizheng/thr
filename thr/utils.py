@@ -150,7 +150,11 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
         res['body_link'] = body_link
     else:
         if len(request.body) > 0:
-            res['body'] = base64.standard_b64encode(request.body)
+            tmp = base64.standard_b64encode(request.body)
+            if six.PY3:
+                res['body'] = tmp.decode('ascii')
+            else:
+                res['body'] = tmp
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
@@ -208,7 +212,11 @@ def unserialize_request_message(message, force_host=None):
         body_link = decoded['body_link']
     else:
         if 'body' in decoded:
-            kwargs['body'] = base64.standard_b64decode(decoded['body'])
+            if six.PY3:
+                tmp = decoded['body'].encode('ascii')
+            else:
+                tmp = decoded['body']
+            kwargs['body'] = base64.standard_b64decode(tmp)
     request = HTTPRequest(url, method=decoded['method'], **kwargs)
     if 'extra' in decoded:
         extra_dict = decoded['extra']
@@ -239,7 +247,11 @@ def serialize_http_response(response, body_link=None, dict_to_inject=None):
     if body_link is not None:
         res['body_link'] = body_link
     else:
-        res['body'] = base64.standard_b64encode(response.body)
+        tmp = base64.standard_b64encode(response.body)
+        if six.PY3:
+            res['body'] = tmp.decode('ascii')
+        else:
+            res['body'] = tmp
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
     return json.dumps(res)
@@ -272,7 +284,11 @@ def unserialize_response_message(message):
         body_link = decoded['body_link']
     status_code = decoded['status_code']
     if body_link is None:
-        body = base64.standard_b64decode(decoded['body'])
+        if six.PY3:
+            tmp = decoded['body'].encode('ascii')
+        else:
+            tmp = decoded['body']
+        body = base64.standard_b64decode(tmp)
     headers = HTTPHeaders()
     for k, v in decoded['headers']:
         headers.add(k, v)

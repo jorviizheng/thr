@@ -4,7 +4,7 @@ from tornado.httputil import HTTPServerRequest, HTTPHeaders
 from tornado.httpclient import HTTPResponse, HTTPRequest
 from unittest import TestCase
 from six.moves.urllib.parse import urlparse, parse_qsl
-from six.moves import cStringIO
+from six import BytesIO
 import six
 
 from thr.utils import make_unique_id, serialize_http_request
@@ -49,12 +49,12 @@ class TestUtils(TestCase):
 
     def test_serialize_body(self):
         uri = "/foo/bar"
-        req = HTTPServerRequest(method='PUT', uri=uri, body="foo")
+        req = HTTPServerRequest(method='PUT', uri=uri, body=b"foo")
         msg = serialize_http_request(req)
         (hreq, body_link, extra_dict) = \
             unserialize_request_message(msg)
         self.assertEquals(hreq.method, 'PUT')
-        self.assertEquals(hreq.body.decode(), "foo")
+        self.assertEquals(hreq.body, b"foo")
         self.assertEquals(body_link, None)
 
     def test_serialize_body_link(self):
@@ -115,7 +115,7 @@ class TestUtils(TestCase):
         headers.add("Foo", "bar")
         headers.add("Foo", "bar2")
         headers.add("Foo2", "bar3")
-        buf = cStringIO("foo")
+        buf = BytesIO(b"foo")
         response = HTTPResponse(req, 200, headers=headers, buffer=buf)
         msg = serialize_http_response(response, dict_to_inject=dct)
         (status_code, body, body_link, headers, extra_dict) = \
@@ -124,7 +124,7 @@ class TestUtils(TestCase):
         self.assertEquals(body_link, None)
         self.assertEquals(len(extra_dict), 1)
         self.assertEquals(extra_dict['foo'], 'bar')
-        self.assertEquals(body, "foo")
+        self.assertEquals(body, b"foo")
         self.assertEquals(len(list(headers.get_all())), 3)
         self.assertEquals(headers['Foo2'], "bar3")
         self.assertEquals(headers['Foo'], "bar,bar2")

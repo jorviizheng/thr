@@ -9,7 +9,7 @@ import tornadis
 from mock import patch
 import json
 
-from six.moves import cStringIO
+from six import BytesIO
 
 from thr.redis2http.app import request_redis_handler, request_queue
 from thr.redis2http.app import request_toro_handler
@@ -121,7 +121,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         request = tornado.httpclient.HTTPRequest("http://localhost/foo",
                                                  method="GET")
         response = tornado.httpclient.HTTPResponse(request, 200,
-                                                   buffer=cStringIO("bar"))
+                                                   buffer=BytesIO(b"bar"))
         response_future = tornado.concurrent.Future()
         response_future.set_result(response)
 
@@ -156,7 +156,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         def test_fetch(request, **kwargs):
             raise tornado.gen.Return(
                 tornado.httpclient.HTTPResponse(request, 200,
-                                                buffer=cStringIO("bar")))
+                                                buffer=BytesIO(b"bar")))
 
         fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
         fetch_mock = fetch_patcher.start()
@@ -179,7 +179,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         (status_code, body, _, headers, _) = \
             unserialize_response_message(serialized_response.decode())
         self.assertEqual(status_code, 200)
-        self.assertEqual(body, u"bar")
+        self.assertEqual(body, b"bar")
         self.assertEqual(len(headers), 0)
         fetch_mock = fetch_patcher.stop()
 
@@ -189,7 +189,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         def test_fetch(request, **kwargs):
             raise tornado.gen.Return(
                 tornado.httpclient.HTTPResponse(request, 200,
-                                                buffer=cStringIO("bar")))
+                                                buffer=BytesIO(b"bar")))
 
         fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
         fetch_mock = fetch_patcher.start()
@@ -219,7 +219,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         (status_code, body, _, headers, _) = \
             unserialize_response_message(serialized_response.decode())
         self.assertEqual(status_code, 200)
-        self.assertEqual(body, u"bar")
+        self.assertEqual(body, b"bar")
         self.assertEqual(len(headers), 0)
         fetch_mock = fetch_patcher.stop()
 
