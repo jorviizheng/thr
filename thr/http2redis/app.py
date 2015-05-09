@@ -9,13 +9,17 @@ from tornado import gen
 from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
+import datetime
 
 from thr.http2redis.rules import Rules
 from thr.http2redis.exchange import HTTPExchange
 from thr.utils import make_unique_id, serialize_http_request
 from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
+from thr import DEFAULT_TIMEOUT
 
 
+define("timeout", type=int, help="Timeout in second for a request",
+       default=DEFAULT_TIMEOUT)
 define("config", help="Path to config file")
 define("port", type=int, default=8888, help="Listening port")
 define("redis_host", default=DEFAULT_REDIS_HOST,
@@ -32,7 +36,8 @@ def get_redis_pool(host, port):
     global redis_pools
     key = "%s:%i" % (host, port)
     if key not in redis_pools:
-        redis_pools[key] = tornadis.ClientPool(host=host, port=port)
+        redis_pools[key] = tornadis.ClientPool(host=host, port=port,
+                                               connect_timeout=options.timeout)
     return redis_pools[key]
 
 
@@ -97,12 +102,21 @@ class Handler(RequestHandler):
                     })
                 yield redis.call('LPUSH', exchange.redis_queue,
                                  serialized_request)
-                result = yield redis.call('BRPOP', response_key, 1)
-                if result:
-                    yield Rules.execute_output_actions(exchange)
-                    if exchange.response.body is None:
-                        exchange.response.body = result[1]
-                    self.return_http_reply(exchange)
+                before = datetime.datetime.now()
+                while True:
+                    result = yield redis.call('BRPOP', response_key, 1)
+                    if result:
+                        yield Rules.execute_output_actions(exchange)
+                        if exchange.response.body is None:
+                            exchange.response.body = result[1]
+                        self.return_http_reply(exchange)
+                        break
+                    after = datetime.datetime.now()
+                    delta = after - before
+                    if delta.total_seconds() > options.timeout:
+                        self.set_status(504)
+                        self.finish("No reply from the backend")
+                        break
 
 
 def make_app():

@@ -51,6 +51,7 @@ class TestApp(AsyncHTTPTestCase):
 
     def get_app(self):
         app.options.config = None
+        app.options.timeout = 1
         return app.make_app()
 
     def add_basic_rules(self):
@@ -84,7 +85,7 @@ class TestApp(AsyncHTTPTestCase):
         add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
         yield self.redis.connect()
         yield self.redis.call('DEL', 'test-queue')
-        yield self.http_client.fetch(self.get_url('/quux'))
+        yield self.http_client.fetch(self.get_url('/quux'), raise_error=False)
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
         self.assertEqual(data['path'], '/quux')
@@ -115,7 +116,7 @@ class TestApp(AsyncHTTPTestCase):
                  Actions(set_redis_queue='no-match'),
                  stop=1)
         add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
-        yield self.http_client.fetch(self.get_url('/quux'))
+        yield self.http_client.fetch(self.get_url('/quux'), raise_error=False)
         yield self.redis.connect()
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
@@ -134,7 +135,7 @@ class TestApp(AsyncHTTPTestCase):
                  Actions(set_redis_queue='test-queue'),
                  stop=1)
         add_rule(Criteria(path='/quux'), Actions(set_redis_queue='no-match'))
-        yield self.http_client.fetch(self.get_url('/quux'))
+        yield self.http_client.fetch(self.get_url('/quux'), raise_error=False)
         yield self.redis.connect()
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
