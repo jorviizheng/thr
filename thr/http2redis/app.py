@@ -32,7 +32,7 @@ def get_redis_pool(host, port):
     global redis_pools
     key = "%s:%i" % (host, port)
     if key not in redis_pools:
-        redis_pools[key] = tornadis.ClientPool()
+        redis_pools[key] = tornadis.ClientPool(host=host, port=port)
     return redis_pools[key]
 
 
