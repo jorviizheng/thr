@@ -13,7 +13,8 @@ import datetime
 
 from thr.http2redis.rules import Rules
 from thr.http2redis.exchange import HTTPExchange
-from thr.utils import make_unique_id, serialize_http_request
+from thr.utils import make_unique_id, serialize_http_request, \
+    unserialize_response_message
 from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
 from thr import DEFAULT_TIMEOUT
 
@@ -75,6 +76,14 @@ class Handler(RequestHandler):
         else:
             self.finish()
 
+    def update_exchange_from_response_message(self, exchange, message):
+        (status_code, body, body_link, headers, _) = \
+            unserialize_response_message(message)
+        exchange.response.status_code = status_code
+        # FIXME: body_link ???
+        exchange.response.body = body
+        exchange.reponse.headers = headers
+
     @gen.coroutine
     def handle(self, *args, **kwargs):
         exchange = HTTPExchange(self.request,
@@ -106,9 +115,9 @@ class Handler(RequestHandler):
                 while True:
                     result = yield redis.call('BRPOP', response_key, 1)
                     if result:
+                        self.update_exchange_from_response_message(exchange,
+                                                                   result[1])
                         yield Rules.execute_output_actions(exchange)
-                        if exchange.response.body is None:
-                            exchange.response.body = result[1]
                         self.return_http_reply(exchange)
                         break
                     after = datetime.datetime.now()

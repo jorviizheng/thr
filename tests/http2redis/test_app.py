@@ -92,19 +92,6 @@ class TestApp(AsyncHTTPTestCase):
         self.assertEqual(data['extra']['response_key'], self.response_key)
 
     @gen_test
-    def test_read_something_from_response_key(self):
-        add_rule(Criteria(path='/quux'), Actions(set_redis_queue='test-queue'))
-        yield self.redis.connect()
-        yield self.redis.call('DEL', self.response_key)
-        yield self.redis.call('LPUSH', self.response_key, 'response-string')
-
-        response = yield self.http_client.fetch(self.get_url('/quux'))
-        self.assertIn('response-string', response.body.decode(),
-                      "We should get data from the response queue")
-        result = yield self.redis.call('RPOP', self.response_key)
-        self.assertIsNone(result, "Reply queue should now be empty")
-
-    @gen_test
     def test_matching_coroutine_rule(self):
 
         @tornado.gen.coroutine
