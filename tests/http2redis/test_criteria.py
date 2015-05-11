@@ -30,6 +30,13 @@ class TestCriteria(testing.AsyncTestCase):
         self.assertTrue(result)
 
     @testing.gen_test
+    def test_path_match2(self):
+        request = HTTPServerRequest(uri='/foo/bar')
+        criteria = Criteria(path=regexp('^/bar.*$', '^/foo.*$'))
+        result = yield criteria.match(HTTPExchange(request))
+        self.assertTrue(result)
+
+    @testing.gen_test
     def test_path_does_not_match(self):
         request = HTTPServerRequest(uri='/quux/bar')
         criteria = Criteria(path=regexp('^/foo.*$'))
@@ -59,6 +66,14 @@ class TestCriteria(testing.AsyncTestCase):
         request = HTTPServerRequest(uri='/')
         request.remote_ip = '10.0.0.1'
         criteria = Criteria(remote_ip=glob('10.0.0.*'))
+        result = yield criteria.match(HTTPExchange(request))
+        self.assertTrue(result)
+
+    @testing.gen_test
+    def test_remote_ip_match2(self):
+        request = HTTPServerRequest(uri='/')
+        request.remote_ip = '10.0.0.1'
+        criteria = Criteria(remote_ip=glob('192.168.0.*', '10.0.0.*'))
         result = yield criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 

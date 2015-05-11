@@ -21,26 +21,33 @@ class glob(object):
     Adapter providing a regexp-like interface for glob expressions
 
     Args:
-        pattern: a glob pattern
+        pattern: glob patterns
 
     >>> glob_obj = glob("*.txt")
     >>> glob_obj.match("foo.txt")
     True
     >>> glob_obj.match("foo.py")
     False
+    >>> glob_obj2 = glob(".txt", "*.png")
+    >>> glob_obj2.match("foo.png")
+    True
+    >>> glob_obj2.match("foo.gif")
+    False
     """
 
-    def __init__(self, pattern):
-        self.pattern = pattern
+    def __init__(self, *args):
+        if len(args) == 0:
+            raise Exception("you must provide at least one pattern")
+        self.patterns = args
 
     def match(self, string):
         """
         Args:
-            string: a string to match against the glob pattern
+            string: a string to match against the glob pattern(s).
         Return:
             bool
         """
-        return fnmatch(string, self.pattern)
+        return any([fnmatch(string, x) for x in self.patterns])
 
 
 class regexp(object):
@@ -56,20 +63,27 @@ class regexp(object):
     True
     >>> regexp_obj.match("Foo.txt")
     False
+    >>> regexp_obj2 = regexp("[a-z]+\.txt", "[a-z]+\.png")
+    >>> regexp_obj2.match("foo.png")
+    True
+    >>> regexp_obj2.match("Foo.txt")
+    False
     """
 
-    def __init__(self, pattern):
-        self.pattern = pattern
-        self.compiled_re = re.compile(pattern)
+    def __init__(self, *args):
+        if len(args) == 0:
+            raise Exception("you must provide at least one pattern")
+        self.patterns = args
+        self.compiled_res = [re.compile(x) for x in self.patterns]
 
     def match(self, string):
         """
         Args:
-            string: a string to match against the regexp pattern
+            string: a string to match against the regexp pattern(s).
         Return:
             bool
         """
-        return self.compiled_re.match(string)
+        return any([x.match(string) for x in self.compiled_res])
 
 
 def make_unique_id():

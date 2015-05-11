@@ -58,7 +58,7 @@ class Limit(object):
         if isinstance(self._hash, six.string_types):
             return self._hash
         else:
-            return self._hash.pattern
+            return self._hash.patterns[0]
 
     def check_hash(self, hashed_message):
         if isinstance(self._hash, (glob, regexp)):
