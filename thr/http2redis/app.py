@@ -135,7 +135,8 @@ class Handler(RequestHandler):
                     if delta.total_seconds() > options.timeout:
                         yield Rules.execute_output_actions(exchange)
                         self.return_http_reply(exchange, force_status=504,
-                                               force_body="no reply from the backend")
+                                               force_body="no reply from "
+                                               "the backend")
                         break
 
 
