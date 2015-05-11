@@ -65,14 +65,20 @@ class Handler(RequestHandler):
     def patch(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
 
-    def return_http_reply(self, exchange):
-        if exchange.response.status_code is not None:
-            self.set_status(exchange.response.status_code)
+    def return_http_reply(self, exchange, force_status=None, force_body=None):
+        status = exchange.response.status_code
+        body = exchange.response.body
+        if force_status:
+            status = force_status
+        if force_body:
+            body = force_body
+        if status is not None:
+            self.set_status(status)
         for name in exchange.response.headers.keys():
             value = exchange.response.headers[name]
             self.set_header(name, value)
-        if exchange.response.body is not None:
-            self.finish(exchange.response.body)
+        if body is not None:
+            self.finish(body)
         else:
             self.finish()
 
@@ -91,14 +97,18 @@ class Handler(RequestHandler):
                                 default_redis_port=options.redis_port,
                                 default_redis_queue=options.redis_queue)
         yield Rules.execute_input_actions(exchange)
-        if exchange.response.status_code is not None:
+        if exchange.response.status_code is not None and \
+                exchange.response.status_code != "null":
             # so we don't push the request on redis
             # let's call output actions for headers and body
             yield Rules.execute_output_actions(exchange)
             self.return_http_reply(exchange)
         elif exchange.redis_queue == "null":
-            self.write("404 Not found")
-            self.set_status(404)
+            # so we don't push the request on redis
+            # let's call output actions for headers and body
+            yield Rules.execute_output_actions(exchange)
+            self.return_http_reply(exchange, force_status=404,
+                                   force_body="no redis queue set")
         else:
             redis_pool = get_redis_pool(exchange.redis_host,
                                         exchange.redis_port)
@@ -123,8 +133,9 @@ class Handler(RequestHandler):
                     after = datetime.datetime.now()
                     delta = after - before
                     if delta.total_seconds() > options.timeout:
-                        self.set_status(504)
-                        self.finish("No reply from the backend")
+                        yield Rules.execute_output_actions(exchange)
+                        self.return_http_reply(exchange, force_status=504,
+                                               force_body="no reply from the backend")
                         break
 
 
