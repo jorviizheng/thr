@@ -31,6 +31,8 @@ class HTTPExchange(object):
             push the request.
         redis_port: the port of the redis server where to push the request.
         redis_queue: the name of the redis queue where to push the request.
+        keyvalues: a dict key=>value to store custom key/values (helper for
+            config file).
     """
 
     def __init__(self, request, default_redis_host=DEFAULT_REDIS_HOST,
@@ -41,6 +43,17 @@ class HTTPExchange(object):
         self.redis_host = default_redis_host
         self.redis_port = default_redis_port
         self.redis_queue = default_redis_queue
+        self.keyvalues = {}
+
+    def set_custom_value(self, key, value):
+        self.keyvalues[key] = value
+
+    def get_custom_value(self, key, default=None):
+        return self.keyvalues.get(key, default)
+
+    def del_custom_value(self, key):
+        if key in self.keyvalues:
+            del(self.keyvalues[key])
 
     def set_input_header(self, value):
         header_name, header_value = value
