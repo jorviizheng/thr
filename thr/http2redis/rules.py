@@ -39,6 +39,8 @@ class Criteria(object):
         value = getattr(request, name)
         if isinstance(criterion, (glob, regexp)):
             return criterion.match(value)
+        elif isinstance(criterion, (list, tuple)):
+            return any([value == x for x in criterion])
         else:
             return value == criterion
 

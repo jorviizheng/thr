@@ -16,6 +16,13 @@ class TestCriteria(testing.AsyncTestCase):
         self.assertTrue(result)
 
     @testing.gen_test
+    def test_method_match2(self):
+        request = HTTPServerRequest(method='POST', uri='/')
+        criteria = Criteria(method=['GET', 'POST'])
+        result = yield criteria.match(HTTPExchange(request))
+        self.assertTrue(result)
+
+    @testing.gen_test
     def test_method_does_not_match(self):
         request = HTTPServerRequest(method='GET', uri='/')
         criteria = Criteria(method='POST')
