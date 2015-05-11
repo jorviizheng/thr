@@ -56,9 +56,9 @@ class TestRules(TestCase):
         def callback_true(request):
             return True
 
-        add_rule(Criteria(request=callback_false),
+        add_rule(Criteria(custom=callback_false),
                  Actions(set_redis_queue='not-this-one'), stop=1)
-        add_rule(Criteria(request=callback_true),
+        add_rule(Criteria(custom=callback_true),
                  Actions(set_redis_queue='yes-this-one'))
         request = HTTPServerRequest(method='GET', uri='/foo')
         exchange = HTTPExchange(request)

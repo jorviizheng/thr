@@ -18,14 +18,14 @@ class Criteria(object):
     supplied as a keyword argument when creating :class:`Criteria`
     instances and may be a string, a :class:`~thr.http2redis.rules.glob` object
     or a compiled regular expression object. A special criterion named
-    `request` may be a callable or a coroutine.
+    `custom` may be a callable or a coroutine.
 
     Keyword Args:
         path: check against the request path
         method: check the HTTP method
         remote_ip: check the remote IP address
-        request: callback taking a request object as its sole argument
-                 and returning a boolean value
+        custom: callback taking a request object as its sole argument
+                and returning a boolean value
     """
 
     def __init__(self, **kwargs):
@@ -43,22 +43,23 @@ class Criteria(object):
             return value == criterion
 
     @gen.coroutine
-    def match(self, request):
+    def match(self, exchange):
         """Check a request against the criteria
 
         Args:
-            request: A Tornado HTTPServerRequest object
+            exchange: A HTTPExchange object
 
         Returns:
             bool
         """
+        request = exchange.request
         futures = [
             gen.maybe_future(self.check_request_attribute(request, attrname))
             for attrname in ('method', 'path', 'remote_ip')
         ]
-        if 'request' in self.criteria:
-            callback = self.criteria['request']
-            future = gen.maybe_future(callback(request))
+        if 'custom' in self.criteria:
+            callback = self.criteria['custom']
+            future = gen.maybe_future(callback(exchange))
             futures.append(future)
         result = yield futures
         raise gen.Return(all(result))
@@ -131,7 +132,7 @@ class Actions(object):
                 continue
             if action:
                 if callable(action):
-                    value = action(exchange.request)
+                    value = action(exchange)
                 else:
                     if self.is_custom_action_name(action_name):
                         raise Exception("custom_ actions must be callable")
@@ -191,7 +192,7 @@ class Rules(object):
     @gen.coroutine
     def _execute(cls, exchange, mode):
         for rule in cls.rules:
-            match = yield rule.criteria.match(exchange.request)
+            match = yield rule.criteria.match(exchange)
             if match:
                 yield rule.actions._execute(exchange, mode)
                 if rule.stop:
