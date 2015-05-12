@@ -40,6 +40,9 @@ class glob(object):
             raise Exception("you must provide at least one pattern")
         self.patterns = args
 
+    def __str__(self):
+        return ",".join(self.patterns)
+
     def match(self, string):
         """
         Args:
@@ -76,6 +79,9 @@ class regexp(object):
         self.patterns = args
         self.compiled_res = [re.compile(x) for x in self.patterns]
 
+    def __str__(self):
+        return ",".join(self.patterns)
+
     def match(self, string):
         """
         Args:
@@ -84,6 +90,26 @@ class regexp(object):
             bool
         """
         return any([x.match(string) for x in self.compiled_res])
+
+
+class diff(object):
+
+    def __init__(self, *args):
+        if len(args) == 0:
+            raise Exception("you must provide at least one pattern")
+        self.patterns = args
+
+    def __str__(self):
+        return "not(%s)" % ",".join(self.patterns)
+
+    def match(self, string):
+        """
+        Args:
+            string: a string to match against the glob pattern(s).
+        Return:
+            bool
+        """
+        return all([x != string for x in self.patterns])
 
 
 def make_unique_id():

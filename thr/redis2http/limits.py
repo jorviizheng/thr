@@ -7,7 +7,7 @@
 
 import six
 import uuid
-from thr.utils import glob, regexp
+from thr.utils import glob, regexp, diff
 from thr.redis2http.counter import get_counter
 
 
@@ -55,28 +55,16 @@ class Limit(object):
         if isinstance(self._hash, six.string_types):
             return self._hash
         else:
-            return self._hash.patterns[0]
+            return str(self._hash)
 
     def check_hash(self, hashed_message):
-        if isinstance(self._hash, (glob, regexp)):
+        if isinstance(self._hash, (glob, regexp, diff)):
             return self._hash.match(hashed_message)
         else:
             return self._hash == hashed_message
 
     def check_limit(self, value):
-        raise NotImplementedError
-
-
-class MaxLimit(Limit):
-
-    def check_limit(self, value):
         return self._limit > value
-
-
-class MinRemainingLimit(Limit):
-
-    def check_limit(self, value):
-        return self._limit <= value
 
 
 def add_max_limit(hash_func, hash_value, max_limit):
@@ -94,22 +82,4 @@ def add_max_limit(hash_func, hash_value, max_limit):
                 return "toto"
         >>> add_max_limit(my_hash, "toto", 3)
     """
-    Limits.add(hash_func, MaxLimit(hash_value, max_limit))
-
-
-def add_min_remaining_limit(hash_func, hash_value, min_remaining_limit):
-    """
-    Add a minimum remaining limit for the specified value of the hash function
-
-    Args:
-        hash_func: a hash function
-        hash_value: a string, :class:`~thr.http2redis.rules.glob` object
-            or a compiled regular expression object
-        min_remaining_limit: an int
-
-    Examples:
-        >>> def my_hash(message):
-                return "toto"
-        >>> add_min_remaining_limit(my_hash, "toto", 1)
-    """
-    Limits.add(hash_func, MinRemainingLimit(hash_value, min_remaining_limit))
+    Limits.add(hash_func, Limit(hash_value, max_limit))
