@@ -11,7 +11,8 @@ import tornadis
 import toro
 
 from thr.redis2http.limits import Limits
-from thr.redis2http.exchange import Queues, HTTPRequestExchange
+from thr.redis2http.exchange import HTTPRequestExchange
+from thr.redis2http.queue import Queues
 from thr.redis2http.counter import incr_counters, decr_counters
 from thr.utils import serialize_http_response
 from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE

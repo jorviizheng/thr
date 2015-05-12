@@ -15,7 +15,8 @@ from thr.redis2http.app import request_redis_handler, get_request_queue
 from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
 from thr.redis2http.limits import Limits, add_max_limit
-from thr.redis2http.exchange import HTTPRequestExchange, Queue
+from thr.redis2http.exchange import HTTPRequestExchange
+from thr.redis2http.queue import Queue
 from thr.redis2http.counter import get_counter, set_counter, del_counter
 from thr.utils import serialize_http_request, serialize_http_response, glob
 from thr.utils import unserialize_response_message
