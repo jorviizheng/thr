@@ -65,7 +65,9 @@ def request_redis_handler(queue, single_iteration=False):
             _, request = yield redis.call('BRPOP', queue.queue, 0)
             if request:
                 rq = get_request_queue()
-                yield rq.put((5, HTTPRequestExchange(request, queue)))
+                exchange = HTTPRequestExchange(request, queue)
+                priority = exchange.priority
+                yield rq.put((priority, exchange))
 
 
 @tornado.gen.coroutine

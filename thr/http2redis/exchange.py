@@ -33,6 +33,8 @@ class HTTPExchange(object):
         redis_queue: the name of the redis queue where to push the request.
         keyvalues: a dict key=>value to store custom key/values (helper for
             config file).
+        priority: a value between 1 (high) and 9 (low) which will be the
+            queue priority at redis2http side.
     """
 
     def __init__(self, request, default_redis_host=DEFAULT_REDIS_HOST,
@@ -45,6 +47,7 @@ class HTTPExchange(object):
         self.redis_queue = default_redis_queue
         self.keyvalues = {}
         self.output_default_body = None
+        self.priority = 5
 
     def set_custom_value(self, key, value):
         self.keyvalues[key] = value
@@ -59,6 +62,10 @@ class HTTPExchange(object):
     def set_input_header(self, value):
         header_name, header_value = value
         self.request.headers[header_name] = header_value
+
+    def set_input_priority(self, value):
+        priority = int(value)
+        self.priority = min(9, max(1, priority))
 
     def add_input_header(self, value):
         header_name, header_value = value

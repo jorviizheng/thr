@@ -120,7 +120,8 @@ class Handler(RequestHandler):
                 serialized_request = serialize_http_request(
                     exchange.request,
                     dict_to_inject={
-                        'response_key': response_key
+                        'response_key': response_key,
+                        'priority': exchange.priority
                     })
                 yield redis.call('LPUSH', exchange.redis_queue,
                                  serialized_request)

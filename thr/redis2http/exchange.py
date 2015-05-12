@@ -74,3 +74,9 @@ class HTTPRequestExchange(object):
         if not self.__request:
             self.unserialize_request()
         return self.__extra_dict
+
+    @property
+    def priority(self):
+        if not self.__request:
+            self.unserialize_request()
+        return self.__extra_dict.get('priority', 5)
