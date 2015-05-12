@@ -16,11 +16,13 @@ from thr.redis2http.counter import incr_counters, decr_counters
 from thr.utils import serialize_http_response
 from thr import DEFAULT_TIMEOUT
 
-
-define("redis2http_config", help="Path to config file")
-define("redis2http_timeout", type=int, help="Timeout in second for a request",
-       default=DEFAULT_TIMEOUT)
-
+try:
+    define("config", help="Path to config file")
+    define("timeout", type=int, help="Timeout in second for a request",
+           default=DEFAULT_TIMEOUT)
+except:
+    # already defined (probably because we are launching unit tests)
+    pass
 
 request_queue = toro.Queue()
 redis_pools = {}
@@ -36,7 +38,7 @@ def get_redis_pool(host, port):
     if key not in redis_pools:
         redis_pools[key] = \
             tornadis.ClientPool(host=host, port=port,
-                                connect_timeout=options.redis2http_timeout)
+                                connect_timeout=options.timeout)
     return redis_pools[key]
 
 
