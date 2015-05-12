@@ -31,18 +31,22 @@ class Criteria(object):
     def __init__(self, **kwargs):
         self.criteria = kwargs
 
+    def eval_single_criterion_value(self, criterion, value):
+        if isinstance(criterion, (glob, regexp)):
+            return criterion.match(value)
+        else:
+            return value == criterion
+
     def check_request_attribute(self, request, name):
         criterion = self.criteria.get(name)
         if criterion is None:
             return True
-
         value = getattr(request, name)
-        if isinstance(criterion, (glob, regexp)):
-            return criterion.match(value)
-        elif isinstance(criterion, (list, tuple)):
-            return any([value == x for x in criterion])
+        if isinstance(criterion, (list, tuple)):
+            return any([self.eval_single_criterion_value(x, value)
+                        for x in criterion])
         else:
-            return value == criterion
+            return self.eval_single_criterion_value(criterion, value)
 
     @gen.coroutine
     def match(self, exchange):
