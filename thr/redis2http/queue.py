@@ -4,6 +4,8 @@
 # This file is part of thr library released under the MIT license.
 # See the LICENSE file for more information.
 
+from thr import DEFAULT_HTTP_PORT
+
 
 # Trick to be able to iter over Queues
 class MetaQueues(type):
@@ -31,11 +33,15 @@ class Queues(object):
 
 class Queue(object):
 
-    def __init__(self, host, port, queue):
+    def __init__(self, host, port, queue, http_host="localhost",
+                 http_port=DEFAULT_HTTP_PORT):
         self.host = host
         self.port = port
         self.queue = queue
+        self.http_host = http_host
+        self.http_port = http_port
 
 
-def add_queue(host, port, queue):
-    Queues.add(Queue(host, port, queue))
+def add_queue(host, port, queue, http_host="localhost",
+              http_port=DEFAULT_HTTP_PORT):
+    Queues.add(Queue(host, port, queue, http_host, http_port))
