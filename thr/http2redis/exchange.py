@@ -44,6 +44,7 @@ class HTTPExchange(object):
         self.redis_port = default_redis_port
         self.redis_queue = default_redis_queue
         self.keyvalues = {}
+        self.output_default_body = None
 
     def set_custom_value(self, key, value):
         self.keyvalues[key] = value
@@ -112,6 +113,9 @@ class HTTPExchange(object):
 
     def set_output_body(self, value):
         self.response.body = value
+
+    def set_output_default_body(self, value):
+        self.output_default_body = value
 
     def set_query_string(self, value):
         self.request.query_arguments = \

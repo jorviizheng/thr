@@ -72,6 +72,9 @@ class Handler(RequestHandler):
             status = force_status
         if force_body:
             body = force_body
+        if body is None and exchange.output_default_body is not None and \
+                exchange.output_default_body != "null":
+            body = exchange.output_default_body
         if status is not None:
             self.set_status(status)
         for name in exchange.response.headers.keys():
@@ -88,7 +91,7 @@ class Handler(RequestHandler):
         exchange.response.status_code = status_code
         # FIXME: body_link ???
         exchange.response.body = body
-        exchange.reponse.headers = headers
+        exchange.response.headers = headers
 
     @gen.coroutine
     def handle(self, *args, **kwargs):
