@@ -15,6 +15,7 @@ from thr.redis2http.app import request_redis_handler, request_queue
 from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
 from thr.redis2http.limits import Limits, add_max_limit
+from thr.redis2http.exchange import HTTPRequestExchange, Queue
 from thr.utils import serialize_http_request, serialize_http_response, glob
 from thr.utils import unserialize_response_message
 
@@ -22,6 +23,8 @@ from thr.utils import unserialize_response_message
 def raise_exception(future=None):
     exc = future.exc_info()
     if exc is not None:
+        import traceback
+        traceback.print_exception(*exc)
         raise exc
 
 
@@ -43,8 +46,9 @@ class TestRedis2HttpApp(AsyncTestCase):
 
     @gen_test
     def test_request_handler(self):
-        self.io_loop.add_future(request_redis_handler('test_queue'),
-                                raise_exception)
+        self.io_loop.add_future(request_redis_handler(Queue('127.0.0.1', 6379,
+                                                            'test_queue'),
+                                                      True), raise_exception)
 
         self.assertEqual(request_queue.qsize(), 0)
 
@@ -56,8 +60,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('LPUSH', 'test_queue', serialized_message)
 
         res = yield request_queue.get()
-        self.assertEqual(res[0].decode(), u'test_queue')
-        self.assertEqual(res[1].decode(), serialized_message)
+        self.assertEqual(res.queue.queue, u'test_queue')
+        self.assertEqual(res.serialized_request.decode(), serialized_message)
 
         yield client.call('DEL', 'test_queue')
         yield client.disconnect()
@@ -133,8 +137,10 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('SET', 'hash_1', 1)
         yield client.call('SET', 'hash_2', 4)
 
-        self.io_loop.add_callback(finalize_request, 'test_key',
-                                  ['hash_1', 'hash_2'], response_future)
+        self.io_loop.add_callback(finalize_request,
+                                  Queue('127.0.0.1', 6379, 'whatever'),
+                                  'test_key', ['hash_1', 'hash_2'],
+                                  response_future)
 
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
         hash_1 = yield client.call('GET', 'hash_1')
@@ -168,8 +174,10 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(['test_queue', serialized_message])
-        self.io_loop.add_future(request_toro_handler(), raise_exception)
+        yield request_queue.put(HTTPRequestExchange(serialized_message,
+                                                    Queue('127.0.0.1', 6379,
+                                                          'test_queue')))
+        self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         client = tornadis.Client()
         yield client.connect()
@@ -207,8 +215,10 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(['test_queue', serialized_message])
-        self.io_loop.add_future(request_toro_handler(), raise_exception)
+        yield request_queue.put(HTTPRequestExchange(serialized_message,
+                                                    Queue('127.0.0.1', 6379,
+                                                          'test_queue')))
+        self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
         foo_counter = yield client.call('GET', 'uuid_*/foo')
@@ -237,8 +247,10 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(['test_queue', serialized_message])
-        self.io_loop.add_future(request_toro_handler(), raise_exception)
+        yield request_queue.put(HTTPRequestExchange(serialized_message,
+                                                    Queue('127.0.0.1', 6379,
+                                                          'test_queue')))
+        self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         _, serialized_request = yield client.call('BRPOP', 'test_queue', 0)
         yield client.call('DEL', 'uuid_*/foo')
