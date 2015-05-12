@@ -11,7 +11,7 @@ import json
 
 from six import BytesIO
 
-from thr.redis2http.app import request_redis_handler, request_queue
+from thr.redis2http.app import request_redis_handler, get_request_queue
 from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
 from thr.redis2http.limits import Limits, add_max_limit
@@ -51,7 +51,7 @@ class TestRedis2HttpApp(AsyncTestCase):
                                                             'test_queue'),
                                                       True), raise_exception)
 
-        self.assertEqual(request_queue.qsize(), 0)
+        self.assertEqual(get_request_queue().qsize(), 0)
 
         client = tornadis.Client()
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
@@ -60,7 +60,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('DEL', 'test_queue')
         yield client.call('LPUSH', 'test_queue', serialized_message)
 
-        res = yield request_queue.get()
+        priority, res = yield get_request_queue().get()
         self.assertEqual(res.queue.queue, u'test_queue')
         self.assertEqual(res.serialized_request.decode(), serialized_message)
 
@@ -158,9 +158,10 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(HTTPRequestExchange(serialized_message,
-                                                    Queue('127.0.0.1', 6379,
-                                                          'test_queue')))
+        exchange = HTTPRequestExchange(serialized_message,
+                                       Queue('127.0.0.1', 6379, 'test_queue'))
+
+        yield get_request_queue().put((5, exchange))
         self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         client = tornadis.Client()
@@ -196,9 +197,9 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(HTTPRequestExchange(serialized_message,
-                                                    Queue('127.0.0.1', 6379,
-                                                          'test_queue')))
+        exchange = HTTPRequestExchange(serialized_message,
+                                       Queue('127.0.0.1', 6379, 'test_queue'))
+        yield get_request_queue().put((5, exchange))
         self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         client = tornadis.Client()
@@ -228,9 +229,9 @@ class TestRedis2HttpApp(AsyncTestCase):
         serialized_message = \
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
-        yield request_queue.put(HTTPRequestExchange(serialized_message,
-                                                    Queue('127.0.0.1', 6379,
-                                                          'test_queue')))
+        exchange = HTTPRequestExchange(serialized_message,
+                                       Queue('127.0.0.1', 6379, 'test_queue'))
+        yield get_request_queue().put((5, exchange))
         self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
         client = tornadis.Client()

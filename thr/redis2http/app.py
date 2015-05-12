@@ -14,7 +14,7 @@ from thr.redis2http.limits import Limits
 from thr.redis2http.exchange import Queues, HTTPRequestExchange
 from thr.redis2http.counter import incr_counters, decr_counters
 from thr.utils import serialize_http_response
-from thr import DEFAULT_TIMEOUT
+from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
 
 try:
     define("config", help="Path to config file")
@@ -23,13 +23,22 @@ try:
 except:
     # already defined (probably because we are launching unit tests)
     pass
+define("local_queue_max_size", help="Local queue (in process) max size",
+       type=int, default=DEFAULT_LOCAL_QUEUE_MAX_SIZE)
 
-request_queue = toro.Queue()
 redis_pools = {}
+request_queue = None
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
                                              max_clients=100000)
+
+
+def get_request_queue():
+    global request_queue
+    if request_queue is None:
+        request_queue = toro.PriorityQueue(options.local_queue_max_size)
+    return request_queue
 
 
 def get_redis_pool(host, port):
@@ -55,7 +64,8 @@ def request_redis_handler(queue, single_iteration=False):
         with (yield redis_request_pool.connected_client()) as redis:
             _, request = yield redis.call('BRPOP', queue.queue, 0)
             if request:
-                yield request_queue.put(HTTPRequestExchange(request, queue))
+                rq = get_request_queue()
+                yield rq.put((5, HTTPRequestExchange(request, queue)))
 
 
 @tornado.gen.coroutine
@@ -96,7 +106,7 @@ def request_toro_handler(single_iteration=False):
     while loop:
         if single_iteration:
             loop = False
-        exchange = yield request_queue.get()
+        priority, exchange = yield get_request_queue().get()
 
         hashes = Limits.check(exchange.request)
         if hashes is None:
