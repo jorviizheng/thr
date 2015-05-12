@@ -7,9 +7,19 @@
 
 import six
 import tornado
+import tornadis
 import uuid
 from thr.utils import glob, regexp
-import thr.redis2http.app
+
+
+redis_hash_pool = tornadis.ClientPool()
+
+
+@tornado.gen.coroutine
+def get_busy_workers(hash):
+    with (yield redis_hash_pool.connected_client()) as redis:
+        nb_workers = yield redis.call('GET', hash)
+    raise tornado.gen.Return(int(nb_workers))
 
 
 class Limits(object):
@@ -40,7 +50,7 @@ class Limits(object):
                     counter = cls.function_ids[hash_func]+'_'+limit.key
                     if limit.check_hash(hash):
                         current_workers = \
-                            yield thr.redis2http.app.get_busy_workers(counter)
+                            yield get_busy_workers(counter)
                         if not limit.check_limit(current_workers):
                             raise tornado.gen.Return(None)
                         hashes.append(counter)
