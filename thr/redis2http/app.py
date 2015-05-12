@@ -12,6 +12,7 @@ import toro
 
 from thr.redis2http.limits import Limits
 from thr.redis2http.exchange import Queues, HTTPRequestExchange
+from thr.redis2http.counter import incr_counters, decr_counters
 from thr.utils import serialize_http_response
 from thr import DEFAULT_TIMEOUT
 
@@ -23,7 +24,6 @@ define("redis2http_timeout", type=int, help="Timeout in second for a request",
 
 request_queue = toro.Queue()
 redis_pools = {}
-redis_hash_pool = tornadis.ClientPool()
 
 
 def get_redis_pool(host, port):
@@ -34,13 +34,6 @@ def get_redis_pool(host, port):
             tornadis.ClientPool(host=host, port=port,
                                 connect_timeout=options.redis2http_timeout)
     return redis_pools[key]
-
-
-@tornado.gen.coroutine
-def get_busy_workers(hash):
-    with (yield redis_hash_pool.connected_client()) as redis:
-        nb_workers = yield redis.call('GET', hash)
-    raise tornado.gen.Return(int(nb_workers))
 
 
 @tornado.gen.coroutine
@@ -65,12 +58,7 @@ def finalize_request(queue, response_key, hashes, response):
     Callback to upload the http response on redis,
     and update the workers counters for each hash
     """
-    if hashes:
-        pipeline = tornadis.Pipeline()
-        for hash in hashes:
-            pipeline.stack_call('DECR', hash)
-        with (yield redis_hash_pool.connected_client()) as redis:
-            yield redis.call(pipeline)
+    decr_counters(hashes)
     redis_request_pool = get_redis_pool(queue.host, queue.port)
     with (yield redis_request_pool.connected_client()) as redis:
         yield redis.call('LPUSH', response_key,
@@ -78,7 +66,7 @@ def finalize_request(queue, response_key, hashes, response):
 
 
 @tornado.gen.coroutine
-def process_request(request, hashes, body_link=None):
+def process_request(request, body_link=None):
     """
     Update the workers counters for each hash and send the request to a worker
     """
@@ -86,12 +74,6 @@ def process_request(request, hashes, body_link=None):
     if body_link:
         body = async_client.fetch(body_link)
         # TODO : body uploaded on redis ?
-    if hashes:
-        pipeline = tornadis.Pipeline()
-        for hash in hashes:
-            pipeline.stack_call('INCR', hash)
-        with (yield redis_hash_pool.connected_client()) as redis:
-            yield redis.call(pipeline)
     if body_link:
         request.body = yield body
     response = yield async_client.fetch(request, raise_error=False)
@@ -110,9 +92,9 @@ def request_toro_handler(single_iteration=False):
             loop = False
         exchange = yield request_queue.get()
 
-        hashes = yield Limits.check(exchange.request)
+        hashes = Limits.check(exchange.request)
         if hashes is None:
-            # reupload the request to the bus
+            # Reupload the request to the bus
             redis_request_pool = get_redis_pool(exchange.queue.host,
                                                 exchange.queue.port)
             with (yield redis_request_pool.connected_client()) as redis:
@@ -120,8 +102,10 @@ def request_toro_handler(single_iteration=False):
                 yield redis.call('LPUSH', exchange.queue.queue,
                                  exchange.serialized_request)
         else:
+            # The request has been accepted, increment the counters now
+            incr_counters(hashes)
             tornado.ioloop.IOLoop.instance().add_future(
-                process_request(exchange.request, hashes, exchange.body_link),
+                process_request(exchange.request, exchange.body_link),
                 partial(finalize_request, exchange.queue,
                         exchange.extra_dict["response_key"], hashes))
 
@@ -133,7 +117,7 @@ def stop_loop(future):
     tornado.ioloop.IOLoop.instance().stop()
 
 
-if __name__ == "__main__":
+def main():
     parse_command_line()
     if options.redis2http_config is not None:
         exec(open(options.redis2http_config).read(), {})

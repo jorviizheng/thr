@@ -16,6 +16,7 @@ from thr.redis2http.app import request_toro_handler
 from thr.redis2http.app import process_request, finalize_request
 from thr.redis2http.limits import Limits, add_max_limit
 from thr.redis2http.exchange import HTTPRequestExchange, Queue
+from thr.redis2http.counter import get_counter, set_counter, del_counter
 from thr.utils import serialize_http_request, serialize_http_response, glob
 from thr.utils import unserialize_response_message
 
@@ -76,26 +77,11 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_mock = fetch_patcher.start()
         fetch_mock.side_effect = test_fetch
 
-        client = tornadis.Client()
-        yield client.connect()
-        yield client.call('DEL', 'hash_1')
-        yield client.call('DEL', 'hash_2')
-        yield client.call('SET', 'hash_1', 0)
-        yield client.call('SET', 'hash_2', 3)
-
         request = tornado.httpclient.HTTPRequest("http://localhost/foo",
                                                  method="GET")
-        response = yield process_request(request, ['hash_1', 'hash_2'])
-
-        hash_1 = yield client.call('GET', 'hash_1')
-        hash_2 = yield client.call('GET', 'hash_2')
-        yield client.call('DEL', 'hash_1')
-        yield client.call('DEL', 'hash_2')
-        yield client.disconnect()
+        response = yield process_request(request)
 
         self.assertEqual(response, u'This should be an HttpResponse')
-        self.assertEqual(hash_1.decode(), u'1')
-        self.assertEqual(hash_2.decode(), u'4')
         fetch_patcher.stop()
 
     @gen_test
@@ -114,7 +100,7 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         request = tornado.httpclient.HTTPRequest("http://localhost/foo",
                                                  method="GET")
-        response = yield process_request(request, [], "this is a body_link")
+        response = yield process_request(request, "this is a body_link")
 
         self.assertEqual(response.url, u'http://localhost/foo')
         self.assertEqual(response.body.decode(), u'There is your body')
@@ -132,10 +118,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
         yield client.call('DEL', 'test_key')
-        yield client.call('DEL', 'hash_1')
-        yield client.call('DEL', 'hash_2')
-        yield client.call('SET', 'hash_1', 1)
-        yield client.call('SET', 'hash_2', 4)
+        set_counter('hash_1', 1)
+        set_counter('hash_2', 4)
 
         self.io_loop.add_callback(finalize_request,
                                   Queue('127.0.0.1', 6379, 'whatever'),
@@ -143,17 +127,17 @@ class TestRedis2HttpApp(AsyncTestCase):
                                   response_future)
 
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        hash_1 = yield client.call('GET', 'hash_1')
-        hash_2 = yield client.call('GET', 'hash_2')
+        hash_1 = get_counter('hash_1')
+        hash_2 = get_counter('hash_2')
 
         self.assertEqual(serialize_http_response(response),
                          serialized_response.decode())
-        self.assertEqual(hash_1.decode(), u'0')
-        self.assertEqual(hash_2.decode(), u'3')
+        self.assertEqual(hash_1, 0)
+        self.assertEqual(hash_2, 3)
 
+        del_counter('hash_1')
+        del_counter('hash_2')
         yield client.call('DEL', 'test_key')
-        yield client.call('DEL', 'hash_1')
-        yield client.call('DEL', 'hash_2')
         yield client.disconnect()
 
     @gen_test
@@ -206,10 +190,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         Limits.reset()
         add_max_limit(lambda r: r.url, glob("*/foo"), 3)
 
-        client = tornadis.Client()
-        yield client.connect()
-        yield client.call('DEL', 'uuid_*/foo')
-        yield client.call('SET', 'uuid_*/foo', 1)
+        set_counter('uuid_*/foo', 1)
 
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
         serialized_message = \
@@ -220,12 +201,15 @@ class TestRedis2HttpApp(AsyncTestCase):
                                                           'test_queue')))
         self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
+        client = tornadis.Client()
+        yield client.connect()
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        foo_counter = yield client.call('GET', 'uuid_*/foo')
-        yield client.call('DEL', 'uuid_*/foo')
         yield client.disconnect()
 
-        self.assertEqual(foo_counter.decode(), u'1')
+        foo_counter = get_counter('uuid_*/foo')
+        del_counter('uuid_*/foo')
+
+        self.assertEqual(foo_counter, 1)
         (status_code, body, _, headers, _) = \
             unserialize_response_message(serialized_response.decode())
         self.assertEqual(status_code, 200)
@@ -238,10 +222,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         Limits.reset()
         add_max_limit(lambda r: r.url, glob("*/foo"), 3)
 
-        client = tornadis.Client()
-        yield client.connect()
-        yield client.call('DEL', 'uuid_*/foo')
-        yield client.call('SET', 'uuid_*/foo', 3)
+        set_counter('uuid_*/foo', 3)
 
         request = tornado.httputil.HTTPServerRequest("GET", "/foo")
         serialized_message = \
@@ -252,9 +233,11 @@ class TestRedis2HttpApp(AsyncTestCase):
                                                           'test_queue')))
         self.io_loop.add_future(request_toro_handler(True), raise_exception)
 
+        client = tornadis.Client()
+        yield client.connect()
         _, serialized_request = yield client.call('BRPOP', 'test_queue', 0)
-        yield client.call('DEL', 'uuid_*/foo')
         yield client.disconnect()
+        del_counter('uuid_*/foo')
 
         self.assertEqual(
             {u'extra': {u'response_key': u'test_key'}, u'host': u'127.0.0.1',
