@@ -35,7 +35,7 @@ class Limits(object):
     def add(cls, hash_func, limit):
         if hash_func not in cls.limits:
             cls.limits[hash_func] = [limit]
-            cls.function_ids[hash_func] = uuid.uuid4()
+            cls.function_ids[hash_func] = str(uuid.uuid4())
         else:
             cls.limits[hash_func].append(limit)
 
