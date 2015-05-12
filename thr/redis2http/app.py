@@ -54,9 +54,6 @@ def get_redis_pool(host, port):
 
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
-    # Needs to be rewritten : there is several redis keys to check,
-    # and it must be done in an intelligent way
-    # (i.e. depending on how many workers are currently free, etc)
     loop = True
     while loop:
         if single_iteration:
