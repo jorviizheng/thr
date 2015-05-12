@@ -30,6 +30,10 @@ class Criteria(object):
 
     def __init__(self, **kwargs):
         self.criteria = kwargs
+        self.criterion_names = [
+            name.replace('get_', '', 1) for name in dir(HTTPExchange)
+            if name.startswith('get_') and not name.startswith('get_custom_')
+        ]
 
     def eval_single_criterion_value(self, criterion, value):
         if isinstance(criterion, (glob, regexp)):
@@ -37,11 +41,12 @@ class Criteria(object):
         else:
             return value == criterion
 
-    def check_request_attribute(self, request, name):
+    def check_exchange_attribute(self, exchange, name):
         criterion = self.criteria.get(name)
         if criterion is None:
             return True
-        value = getattr(request, name)
+        getter = getattr(exchange, "get_%s" % name)
+        value = getter()
         if isinstance(criterion, (list, tuple)):
             return any([self.eval_single_criterion_value(x, value)
                         for x in criterion])
@@ -58,13 +63,14 @@ class Criteria(object):
         Returns:
             bool
         """
-        request = exchange.request
         futures = [
-            gen.maybe_future(self.check_request_attribute(request, attrname))
-            for attrname in ('method', 'path', 'remote_ip')
+            gen.maybe_future(self.check_exchange_attribute(exchange, attrname))
+            for attrname in self.criterion_names
         ]
         if 'custom' in self.criteria:
             callback = self.criteria['custom']
+            if not callable(callback):
+                raise Exception("custom criteria must be callable")
             future = gen.maybe_future(callback(exchange))
             futures.append(future)
         result = yield futures

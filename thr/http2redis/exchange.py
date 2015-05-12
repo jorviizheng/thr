@@ -139,3 +139,12 @@ class HTTPExchange(object):
             del(self.request.query_arguments[value])
         except KeyError:
             pass
+
+    def get_method(self):
+        return self.request.method
+
+    def get_path(self):
+        return self.request.path
+
+    def get_remote_ip(self):
+        return self.request.remote_ip
