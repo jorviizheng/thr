@@ -197,7 +197,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
                 res['body'] = tmp
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
-    return json.dumps(res)
+    return json.dumps(res).encode('utf-8')
 
 
 def unserialize_request_message(message, force_host=None):
@@ -223,7 +223,7 @@ def unserialize_request_message(message, force_host=None):
     """
     body_link = None
     extra_dict = {}
-    decoded = json.loads(message)
+    decoded = json.loads(message.decode('utf-8'))
     if force_host:
         host = force_host
     else:
@@ -294,7 +294,7 @@ def serialize_http_response(response, body_link=None, dict_to_inject=None):
             res['body'] = tmp
     if dict_to_inject is not None:
         res['extra'] = dict_to_inject
-    return json.dumps(res)
+    return json.dumps(res).encode('utf-8')
 
 
 def unserialize_response_message(message):
@@ -319,7 +319,7 @@ def unserialize_response_message(message):
     body_link = None
     body = None
     extra_dict = {}
-    decoded = json.loads(message)
+    decoded = json.loads(message.decode('utf-8'))
     if 'body_link' in decoded:
         body_link = decoded['body_link']
     status_code = decoded['status_code']

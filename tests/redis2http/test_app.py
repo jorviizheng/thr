@@ -63,7 +63,7 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         priority, res = yield get_request_queue().get()
         self.assertEqual(res.queue.queue, u'test_queue')
-        self.assertEqual(res.serialized_request.decode(), serialized_message)
+        self.assertEqual(res.serialized_request, serialized_message)
 
         yield client.call('DEL', 'test_queue')
         yield client.disconnect()
@@ -132,7 +132,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         hash_2 = get_counter('hash_2')
 
         self.assertEqual(serialize_http_response(response),
-                         serialized_response.decode())
+                         serialized_response)
         self.assertEqual(hash_1, 0)
         self.assertEqual(hash_2, 3)
 
@@ -171,7 +171,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.disconnect()
 
         (status_code, body, _, headers, _) = \
-            unserialize_response_message(serialized_response.decode())
+            unserialize_response_message(serialized_response)
         self.assertEqual(status_code, 200)
         self.assertEqual(body, b"bar")
         self.assertEqual(len(headers), 0)
@@ -213,7 +213,7 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         self.assertEqual(foo_counter, 1)
         (status_code, body, _, headers, _) = \
-            unserialize_response_message(serialized_response.decode())
+            unserialize_response_message(serialized_response)
         self.assertEqual(status_code, 200)
         self.assertEqual(body, b"bar")
         self.assertEqual(len(headers), 0)
