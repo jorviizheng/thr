@@ -25,6 +25,10 @@ define("redis2http_timeout", type=int, help="Timeout in second for a request",
 request_queue = toro.Queue()
 redis_pools = {}
 
+async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
+tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
+                                             max_clients=100000)
+
 
 def get_redis_pool(host, port):
     global redis_pools
