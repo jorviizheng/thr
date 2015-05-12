@@ -60,8 +60,9 @@ def request_redis_handler(queue, single_iteration=False):
             loop = False
         redis_request_pool = get_redis_pool(queue.host, queue.port)
         with (yield redis_request_pool.connected_client()) as redis:
-            _, request = yield redis.call('BRPOP', queue.queue, 0)
-            if request:
+            tmp = yield redis.call('BRPOP', queue.queue, 10)
+            if tmp:
+                _, request = tmp
                 rq = get_request_queue()
                 exchange = HTTPRequestExchange(request, queue)
                 priority = exchange.priority
