@@ -71,7 +71,8 @@ def request_redis_handler(queue, single_iteration=False):
                 exchange = HTTPRequestExchange(request, queue)
                 priority = exchange.priority
                 yield rq.put((priority, exchange))
-                logger.info("Got request from queue %s, priority %s", queue.queue, priority)
+                logger.info("Got request from queue %s, "
+                            "priority %s", queue.queue, priority)
 
 
 @tornado.gen.coroutine

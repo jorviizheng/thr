@@ -89,40 +89,6 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_patcher.stop()
 
     @gen_test
-    def test_finalize_request(self):
-        request = tornado.httpclient.HTTPRequest("http://localhost/foo",
-                                                 method="GET")
-        response = tornado.httpclient.HTTPResponse(request, 200,
-                                                   buffer=BytesIO(b"bar"))
-        response_future = tornado.concurrent.Future()
-        response_future.set_result(response)
-
-        client = tornadis.Client()
-        yield client.connect()
-        yield client.call('DEL', 'test_key')
-        set_counter('hash_1', 1)
-        set_counter('hash_2', 4)
-
-        self.io_loop.add_callback(finalize_request,
-                                  Queue('127.0.0.1', 6379, 'whatever'),
-                                  'test_key', ['hash_1', 'hash_2'],
-                                  response_future)
-
-        _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        hash_1 = get_counter('hash_1')
-        hash_2 = get_counter('hash_2')
-
-        self.assertEqual(serialize_http_response(response),
-                         serialized_response)
-        self.assertEqual(hash_1, 0)
-        self.assertEqual(hash_2, 3)
-
-        del_counter('hash_1')
-        del_counter('hash_2')
-        yield client.call('DEL', 'test_key')
-        yield client.disconnect()
-
-    @gen_test
     def test_toro_handler(self):
         @tornado.gen.coroutine
         def test_fetch(request, **kwargs):
