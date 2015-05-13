@@ -76,7 +76,10 @@ class Handler(RequestHandler):
                 exchange.output_default_body != "null":
             body = exchange.output_default_body
         if status is not None:
-            self.set_status(status)
+            if status == 599:
+                self.set_status(504)
+            else:
+                self.set_status(status)
         for name in exchange.response.headers.keys():
             value = exchange.response.headers[name]
             self.set_header(name, value)

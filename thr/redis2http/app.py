@@ -136,8 +136,8 @@ def stop_loop(future):
 
 def main():
     parse_command_line()
-    if options.redis2http_config is not None:
-        exec(open(options.redis2http_config).read(), {})
+    if options.config is not None:
+        exec(open(options.config).read(), {})
     loop = tornado.ioloop.IOLoop.instance()
     for queue in Queues:
         loop.add_future(request_redis_handler(queue), stop_loop)

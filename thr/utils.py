@@ -189,7 +189,7 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
     if body_link is not None:
         res['body_link'] = body_link
     else:
-        if len(request.body) > 0:
+        if request.body is not None and len(request.body) > 0:
             tmp = base64.standard_b64encode(request.body)
             if six.PY3:
                 res['body'] = tmp.decode('ascii')
@@ -287,7 +287,10 @@ def serialize_http_response(response, body_link=None, dict_to_inject=None):
     if body_link is not None:
         res['body_link'] = body_link
     else:
-        tmp = base64.standard_b64encode(response.body)
+        if response.body is None:
+            tmp = ""
+        else:
+            tmp = base64.standard_b64encode(response.body)
         if six.PY3:
             res['body'] = tmp.decode('ascii')
         else:
@@ -323,7 +326,7 @@ def unserialize_response_message(message):
     if 'body_link' in decoded:
         body_link = decoded['body_link']
     status_code = decoded['status_code']
-    if body_link is None:
+    if body_link is None and 'body' in decoded:
         if six.PY3:
             tmp = decoded['body'].encode('ascii')
         else:
