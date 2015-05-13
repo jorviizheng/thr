@@ -65,7 +65,7 @@ class HTTPExchange(object):
 
     def set_input_priority(self, value):
         priority = int(value)
-        self.priority = min(9, max(1, priority))
+        self.priority = min(99, max(1, priority))
 
     def add_input_header(self, value):
         header_name, header_value = value

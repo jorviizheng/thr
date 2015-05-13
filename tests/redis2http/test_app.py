@@ -13,12 +13,12 @@ from six import BytesIO
 
 from thr.redis2http.app import request_redis_handler, get_request_queue
 from thr.redis2http.app import request_toro_handler
-from thr.redis2http.app import process_request, finalize_request
+from thr.redis2http.app import process_request
 from thr.redis2http.limits import Limits, add_max_limit
 from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queue
 from thr.redis2http.counter import get_counter, set_counter, del_counter
-from thr.utils import serialize_http_request, serialize_http_response, glob
+from thr.utils import glob, serialize_http_request
 from thr.utils import unserialize_response_message
 
 
@@ -80,31 +80,12 @@ class TestRedis2HttpApp(AsyncTestCase):
 
         request = tornado.httpclient.HTTPRequest("http://localhost/foo",
                                                  method="GET")
-        response = yield process_request(request)
+
+        exchange = HTTPRequestExchange(request, Queue("localhost", 6379,
+                                                      "foo"))
+        response = yield process_request(exchange, [])
 
         self.assertEqual(response, u'This should be an HttpResponse')
-        fetch_patcher.stop()
-
-    @gen_test
-    def test_process_request_with_body_link(self):
-        @tornado.gen.coroutine
-        def test_fetch(request, **kwargs):
-            if request == "this is a body_link":
-                raise tornado.gen.Return('There is your body')
-            # We return the request to check it has been
-            # correctly updated with the body
-            raise tornado.gen.Return(request)
-
-        fetch_patcher = patch("tornado.httpclient.AsyncHTTPClient.fetch")
-        fetch_mock = fetch_patcher.start()
-        fetch_mock.side_effect = test_fetch
-
-        request = tornado.httpclient.HTTPRequest("http://localhost/foo",
-                                                 method="GET")
-        response = yield process_request(request, "this is a body_link")
-
-        self.assertEqual(response.url, u'http://localhost/foo')
-        self.assertEqual(response.body.decode(), u'There is your body')
         fetch_patcher.stop()
 
     @gen_test

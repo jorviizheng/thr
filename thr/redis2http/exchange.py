@@ -5,6 +5,7 @@
 # See the LICENSE file for more information.
 
 from thr.utils import unserialize_request_message
+import time
 
 
 class HTTPRequestExchange(object):
@@ -12,6 +13,7 @@ class HTTPRequestExchange(object):
     def __init__(self, request, queue):
         self.serialized_request = request
         self.queue = queue
+        self.creation_time = time.time()
         self.__request = None
         self.__body_link = None
         self.__extra_dict = None
@@ -44,4 +46,9 @@ class HTTPRequestExchange(object):
     def priority(self):
         if not self.__request:
             self.unserialize_request()
-        return self.__extra_dict.get('priority', 5)
+        big = self.__extra_dict.get('priority', 5)
+        little = int(time.time() * 1000)
+        return big * 10000000000000 - little
+
+    def lifetime_ms(self):
+        return int((time.time() - self.creation_time) * 1000)

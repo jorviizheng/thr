@@ -4,8 +4,9 @@
 # This file is part of thr library released under the MIT license.
 # See the LICENSE file for more information.
 
-from functools import partial
 import tornado
+import functools
+import Queue
 from tornado.options import define, options, parse_command_line
 import tornadis
 import toro
@@ -70,31 +71,46 @@ def request_redis_handler(queue, single_iteration=False):
 
 
 @tornado.gen.coroutine
-def finalize_request(queue, response_key, hashes, response):
-    """
-    Callback to upload the http response on redis,
-    and update the workers counters for each hash
-    """
-    decr_counters(hashes)
-    redis_request_pool = get_redis_pool(queue.host, queue.port)
-    with (yield redis_request_pool.connected_client()) as redis:
-        yield redis.call('LPUSH', response_key,
-                         serialize_http_response(response.result()))
-
-
-@tornado.gen.coroutine
-def process_request(request, body_link=None):
+def process_request(exchange, hashes):
     """
     Update the workers counters for each hash and send the request to a worker
     """
     async_client = tornado.httpclient.AsyncHTTPClient()
-    if body_link:
-        body = async_client.fetch(body_link)
-        # TODO : body uploaded on redis ?
-    if body_link:
-        request.body = yield body
+    request = exchange.request
+    request.connect_timeout = options.timeout
+    request.request_timeout = options.timeout
+    response_key = exchange.extra_dict['response_key']
+    queue = exchange.queue
     response = yield async_client.fetch(request, raise_error=False)
-    raise tornado.gen.Return(response)
+    redis_request_pool = get_redis_pool(queue.host, queue.port)
+    with (yield redis_request_pool.connected_client()) as redis:
+        yield redis.call('LPUSH', response_key,
+                         serialize_http_response(response))
+
+
+def decr_counters_callback(hashes, future):
+    decr_counters(hashes)
+
+
+def reinject_callback(exchange):
+    try:
+        # FIXME: config
+        if exchange.lifetime_ms() <= 1000:
+            get_request_queue().put_nowait((exchange.priority, exchange))
+            return
+    except Queue.Full:
+        pass
+    future = reinject_on_bus(exchange)
+    tornado.ioloop.IOLoop.instance().add_future(future, lambda x: None)
+
+
+@tornado.gen.coroutine
+def reinject_on_bus(exchange):
+    redis_request_pool = get_redis_pool(exchange.queue.host,
+                                        exchange.queue.port)
+    with (yield redis_request_pool.connected_client()) as redis:
+        yield redis.call('LPUSH', exchange.queue.queue,
+                         exchange.serialized_request)
 
 
 @tornado.gen.coroutine
@@ -103,28 +119,23 @@ def request_toro_handler(single_iteration=False):
     Get a request for the toro queue, check the limits for each hash,
     and process the request if there is a free worker
     """
-    loop = True
-    while loop:
-        if single_iteration:
-            loop = False
+    while True:
         priority, exchange = yield get_request_queue().get()
-
         hashes = Limits.check(exchange.request)
         if hashes is None:
-            # Reupload the request to the bus
-            redis_request_pool = get_redis_pool(exchange.queue.host,
-                                                exchange.queue.port)
-            with (yield redis_request_pool.connected_client()) as redis:
-                # We still have the serialized request, might as well reuse it
-                yield redis.call('LPUSH', exchange.queue.queue,
-                                 exchange.serialized_request)
+            # Request rejected, we will re add to the queue at the end
+            # FIXME: conf
+            tornado.ioloop.IOLoop.instance().call_later(0.01,
+                                                        reinject_callback,
+                                                        exchange)
         else:
             # The request has been accepted, increment the counters now
             incr_counters(hashes)
-            tornado.ioloop.IOLoop.instance().add_future(
-                process_request(exchange.request, exchange.body_link),
-                partial(finalize_request, exchange.queue,
-                        exchange.extra_dict["response_key"], hashes))
+            future = process_request(exchange, hashes)
+            cb = functools.partial(decr_counters_callback, hashes)
+            tornado.ioloop.IOLoop.instance().add_future(future, cb)
+        if single_iteration:
+            break
 
 
 def stop_loop(future):
@@ -140,6 +151,8 @@ def main():
         exec(open(options.config).read(), {})
     loop = tornado.ioloop.IOLoop.instance()
     for queue in Queues:
+        loop.add_future(request_redis_handler(queue), stop_loop)
+        loop.add_future(request_redis_handler(queue), stop_loop)
         loop.add_future(request_redis_handler(queue), stop_loop)
     loop.add_future(request_toro_handler(), stop_loop)
     loop.start()
