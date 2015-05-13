@@ -6,7 +6,7 @@
 
 import tornado
 import functools
-import Queue
+from six.moves import queue as _queue
 from tornado.options import define, options, parse_command_line
 import tornadis
 import toro
@@ -97,13 +97,13 @@ def decr_counters_callback(hashes, future):
     decr_counters(hashes)
 
 
-def reinject_callback(exchange):
+def reinject_callback(exchange, max_lifetime=1000):
     try:
         # FIXME: config
-        if exchange.lifetime_ms() <= 1000:
+        if exchange.lifetime_ms() <= max_lifetime:
             get_request_queue().put_nowait((exchange.priority, exchange))
             return
-    except Queue.Full:
+    except _queue.Full:
         pass
     future = reinject_on_bus(exchange)
     tornado.ioloop.IOLoop.instance().add_future(future, lambda x: None)
