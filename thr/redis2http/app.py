@@ -9,6 +9,7 @@ import tornado
 from tornado.options import define, options, parse_command_line
 import tornadis
 import toro
+import logging
 
 from thr.redis2http.limits import Limits
 from thr.redis2http.exchange import HTTPRequestExchange
@@ -29,6 +30,8 @@ define("local_queue_max_size", help="Local queue (in process) max size",
 
 redis_pools = {}
 request_queue = None
+
+logger = logging.getLogger("thr.redis2http")
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
@@ -67,6 +70,7 @@ def request_redis_handler(queue, single_iteration=False):
                 exchange = HTTPRequestExchange(request, queue)
                 priority = exchange.priority
                 yield rq.put((priority, exchange))
+                logger.info("Got request from queue %s, priority %s", queue.queue, priority)
 
 
 @tornado.gen.coroutine
