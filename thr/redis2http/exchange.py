@@ -13,7 +13,7 @@ class HTTPRequestExchange(object):
     def __init__(self, request, queue):
         self.serialized_request = request
         self.queue = queue
-        self.creation_time = time.time()
+        self.local_queue_time = time.time()
         self.__request = None
         self.__body_link = None
         self.__extra_dict = None
@@ -50,5 +50,14 @@ class HTTPRequestExchange(object):
         little = int(time.time() * 1000)
         return big * 10000000000000 - little
 
-    def lifetime_ms(self):
-        return int((time.time() - self.creation_time) * 1000)
+    def lifetime_in_local_queue_ms(self):
+        return int((time.time() - self.local_queue_time) * 1000)
+
+    def lifetime(self):
+        if not self.__request:
+            self.unserialize_request()
+        now = time.time()
+        dt = now - self.__extra_dict.get('creation_time', now)
+        # creation_time can be set by another not time synchronized box
+        dt = max(0, dt)
+        return int(dt)

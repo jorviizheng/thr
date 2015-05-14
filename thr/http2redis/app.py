@@ -9,6 +9,7 @@ from tornado import gen
 from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
+import time
 import datetime
 
 from thr.http2redis.rules import Rules
@@ -124,7 +125,8 @@ class Handler(RequestHandler):
                     exchange.request,
                     dict_to_inject={
                         'response_key': response_key,
-                        'priority': exchange.priority
+                        'priority': exchange.priority,
+                        'creation_time': time.time()
                     })
                 yield redis.call('LPUSH', exchange.redis_queue,
                                  serialized_request)

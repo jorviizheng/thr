@@ -7,13 +7,13 @@ import tornado
 from tornado.testing import AsyncTestCase, gen_test
 import tornadis
 from mock import patch
-import json
 
 from six import BytesIO
 
 from thr.redis2http.app import request_redis_handler, get_request_queue
-from thr.redis2http.app import request_toro_handler
-from thr.redis2http.app import process_request, reinject_callback
+from thr.redis2http.app import local_queue_handler
+from thr.redis2http.app import process_request, local_reinject_queue
+from thr.redis2http.app import local_reinject_handler
 from thr.redis2http.limits import Limits, add_max_limit
 from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queue
@@ -98,7 +98,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.disconnect()
 
     @gen_test
-    def test_toro_handler(self):
+    def test_local_queue_handler_handler(self):
         @tornado.gen.coroutine
         def test_fetch(request, **kwargs):
             raise tornado.gen.Return(
@@ -119,7 +119,7 @@ class TestRedis2HttpApp(AsyncTestCase):
                                        Queue('127.0.0.1', 6379, 'test_queue'))
 
         yield get_request_queue().put((5, exchange))
-        self.io_loop.add_future(request_toro_handler(True), raise_exception)
+        self.io_loop.add_future(local_queue_handler(True), raise_exception)
 
         client = tornadis.Client()
         yield client.connect()
@@ -134,7 +134,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_mock = fetch_patcher.stop()
 
     @gen_test
-    def test_toro_handler_with_limits(self):
+    def test_local_queue_handler_with_limits(self):
         @tornado.gen.coroutine
         def test_fetch(request, **kwargs):
             raise tornado.gen.Return(
@@ -157,7 +157,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         exchange = HTTPRequestExchange(serialized_message,
                                        Queue('127.0.0.1', 6379, 'test_queue'))
         yield get_request_queue().put((5, exchange))
-        self.io_loop.add_future(request_toro_handler(True), raise_exception)
+        self.io_loop.add_future(local_queue_handler(True), raise_exception)
 
         client = tornadis.Client()
         yield client.connect()
@@ -176,7 +176,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_mock = fetch_patcher.stop()
 
     @gen_test
-    def test_toro_handler_reinject(self):
+    def test_local_reinject_handler(self):
         Limits.reset()
         add_max_limit(lambda r: r.url, glob("*/foo"), 3)
 
@@ -188,18 +188,8 @@ class TestRedis2HttpApp(AsyncTestCase):
                                    dict_to_inject={"response_key": "test_key"})
         exchange = HTTPRequestExchange(serialized_message,
                                        Queue('127.0.0.1', 6379, 'test_queue'))
-        reinject_callback(exchange)
+        local_reinject_queue.put(exchange)
+        yield local_reinject_handler(True)
         self.assertEquals(get_request_queue().qsize(), 1)
-        yield tornado.gen.sleep(0.2)
-        reinject_callback(exchange, 100)
-        self.assertEquals(get_request_queue().qsize(), 1)
-        client = tornadis.Client()
-        yield client.connect()
-        _, serialized_request = yield client.call('BRPOP', 'test_queue', 0)
-        yield client.disconnect()
+        get_request_queue().get_nowait()
         del_counter('uuid_*/foo')
-
-        self.assertEqual(
-            {u'extra': {u'response_key': u'test_key'}, u'host': u'127.0.0.1',
-             u'method': u'GET', u'path': u'/foo'},
-            json.loads(serialized_request.decode()))

@@ -18,6 +18,7 @@ from thr.redis2http.queue import Queues
 from thr.redis2http.counter import incr_counters, decr_counters
 from thr.utils import serialize_http_response
 from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
+from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
 
 try:
     define("config", help="Path to config file")
@@ -28,9 +29,15 @@ except:
     pass
 define("local_queue_max_size", help="Local queue (in process) max size",
        type=int, default=DEFAULT_LOCAL_QUEUE_MAX_SIZE)
+define("max_lifetime", help="Maximum lifetime (in second) for a request on "
+       "buses/queues", type=int, default=DEFAULT_MAXIMUM_LIFETIME)
 
 redis_pools = {}
 request_queue = None
+
+reinject_event = toro.Event()
+local_reinject_queue = toro.Queue()
+bus_reinject_queue = toro.Queue()
 
 logger = logging.getLogger("thr.redis2http")
 
@@ -58,21 +65,30 @@ def get_redis_pool(host, port):
 
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
-    loop = True
-    while loop:
-        if single_iteration:
-            loop = False
-        redis_request_pool = get_redis_pool(queue.host, queue.port)
-        with (yield redis_request_pool.connected_client()) as redis:
-            tmp = yield redis.call('BRPOP', queue.queue, 10)
-            if tmp:
-                _, request = tmp
-                rq = get_request_queue()
-                exchange = HTTPRequestExchange(request, queue)
+    redis = tornadis.Client(host=queue.host, port=queue.port,
+                            connect_timeout=options.timeout,
+                            autoconnect=True)
+    while True:
+        tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
+        if tmp:
+            _, request = tmp
+            rq = get_request_queue()
+            exchange = HTTPRequestExchange(request, queue)
+            lifetime = exchange.lifetime()
+            if lifetime > options.max_lifetime:
+                logger.warning("expired request (lifetime: %i) got from "
+                               "queue redis://%s:%i/%s => trash it",
+                               lifetime, queue.host, queue.port, queue.queue)
+            else:
                 priority = exchange.priority
+                logger.debug("Got request (lifetime: %i) got from "
+                             "queue redis://%s:%i/%s => local queue it "
+                             "with priority: %i",
+                             lifetime, queue.host, queue.port, queue.queue,
+                             priority)
                 yield rq.put((priority, exchange))
-                logger.info("Got request from queue %s, "
-                            "priority %s", queue.queue, priority)
+        if single_iteration:
+            break
 
 
 @tornado.gen.coroutine
@@ -95,31 +111,49 @@ def process_request(exchange, hashes):
 
 def decr_counters_callback(hashes, future):
     decr_counters(hashes)
-
-
-def reinject_callback(exchange, max_lifetime=1000):
-    try:
-        # FIXME: config
-        if exchange.lifetime_ms() <= max_lifetime:
-            get_request_queue().put_nowait((exchange.priority, exchange))
-            return
-    except _queue.Full:
-        pass
-    future = reinject_on_bus(exchange)
-    tornado.ioloop.IOLoop.instance().add_future(future, lambda x: None)
+    reinject_event.set()
 
 
 @tornado.gen.coroutine
-def reinject_on_bus(exchange):
-    redis_request_pool = get_redis_pool(exchange.queue.host,
-                                        exchange.queue.port)
-    with (yield redis_request_pool.connected_client()) as redis:
-        yield redis.call('LPUSH', exchange.queue.queue,
-                         exchange.serialized_request)
+def local_reinject_handler(single_iteration=False):
+    while True:
+        yield reinject_event.wait()
+        while True:
+            try:
+                exchange = local_reinject_queue.get_nowait()
+                try:
+                    get_request_queue().put_nowait((exchange.priority,
+                                                    exchange))
+                    logger.debug("reinjected request on local queue")
+                except _queue.Full:
+                    logger.debug("can't reinject request on local queue (full)"
+                                 " => scheduling reinject on bus")
+                    bus_reinject_queue.put_nowait(exchange)
+            except _queue.Empty:
+                reinject_event.clear()
+                break
+        if single_iteration:
+            break
 
 
 @tornado.gen.coroutine
-def request_toro_handler(single_iteration=False):
+def bus_reinject_handler(single_iteration=False):
+    while True:
+        exchange = yield bus_reinject_queue.get()
+        redis_request_pool = get_redis_pool(exchange.queue.host,
+                                            exchange.queue.port)
+        with (yield redis_request_pool.connected_client()) as redis:
+            logger.debug("reinject request on redis://%s:%i/%s",
+                         exchange.queue.host, exchange.queue.port,
+                         exchange.queue.queue)
+            yield redis.call('LPUSH', exchange.queue.queue,
+                             exchange.serialized_request)
+        if single_iteration:
+            break
+
+
+@tornado.gen.coroutine
+def local_queue_handler(single_iteration=False):
     """
     Get a request for the toro queue, check the limits for each hash,
     and process the request if there is a free worker
@@ -128,11 +162,7 @@ def request_toro_handler(single_iteration=False):
         priority, exchange = yield get_request_queue().get()
         hashes = Limits.check(exchange.request)
         if hashes is None:
-            # Request rejected, we will re add to the queue at the end
-            # FIXME: conf
-            tornado.ioloop.IOLoop.instance().call_later(0.01,
-                                                        reinject_callback,
-                                                        exchange)
+            local_reinject_queue.put(exchange)
         else:
             # The request has been accepted, increment the counters now
             incr_counters(hashes)
@@ -157,7 +187,7 @@ def main():
     loop = tornado.ioloop.IOLoop.instance()
     for queue in Queues:
         loop.add_future(request_redis_handler(queue), stop_loop)
-        loop.add_future(request_redis_handler(queue), stop_loop)
-        loop.add_future(request_redis_handler(queue), stop_loop)
-    loop.add_future(request_toro_handler(), stop_loop)
+    loop.add_future(bus_reinject_handler(), stop_loop)
+    loop.add_future(local_reinject_handler(), stop_loop)
+    loop.add_future(local_queue_handler(), stop_loop)
     loop.start()
