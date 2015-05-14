@@ -338,3 +338,8 @@ def unserialize_response_message(message):
     if 'extra' in decoded:
         extra_dict = decoded['extra']
     return (status_code, body, body_link, headers, extra_dict)
+
+
+def timedelta_total_ms(td):
+    us = td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6
+    return int(us / 1000)
