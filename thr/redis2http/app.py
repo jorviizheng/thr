@@ -11,14 +11,16 @@ from tornado.options import define, options, parse_command_line
 import tornadis
 import toro
 import logging
+from datetime import timedelta, datetime
 
 from thr.redis2http.limits import Limits
 from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queues
 from thr.redis2http.counter import incr_counters, decr_counters
-from thr.utils import serialize_http_response
+from thr.utils import serialize_http_response, timedelta_total_ms
 from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
+from thr import DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS
 
 try:
     define("config", help="Path to config file")
@@ -31,6 +33,9 @@ define("local_queue_max_size", help="Local queue (in process) max size",
        type=int, default=DEFAULT_LOCAL_QUEUE_MAX_SIZE)
 define("max_lifetime", help="Maximum lifetime (in second) for a request on "
        "buses/queues", type=int, default=DEFAULT_MAXIMUM_LIFETIME)
+define("max_local_queue_lifetime_ms", help="Maximum lifetime (in ms) for a "
+       "request on local queue before reuploading on bus", type=int,
+       default=DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS)
 
 redis_pools = {}
 request_queue = None
@@ -79,30 +84,33 @@ def request_redis_handler(queue, single_iteration=False):
                 logger.warning("expired request (lifetime: %i) got from "
                                "queue redis://%s:%i/%s => trash it",
                                lifetime, queue.host, queue.port, queue.queue)
-            else:
-                priority = exchange.priority
-                logger.debug("Got request (lifetime: %i) got from "
-                             "queue redis://%s:%i/%s => local queue it "
-                             "with priority: %i",
-                             lifetime, queue.host, queue.port, queue.queue,
-                             priority)
-                yield rq.put((priority, exchange))
+                continue
+            priority = exchange.priority
+            logger.debug("Got request (lifetime: %i) got from "
+                         "queue redis://%s:%i/%s => local queue it "
+                         "with priority: %i",
+                         lifetime, queue.host, queue.port, queue.queue,
+                         priority)
+            yield rq.put((priority, exchange))
         if single_iteration:
             break
 
 
 @tornado.gen.coroutine
 def process_request(exchange, hashes):
-    """
-    Update the workers counters for each hash and send the request to a worker
-    """
     async_client = tornado.httpclient.AsyncHTTPClient()
     request = exchange.request
     request.connect_timeout = options.timeout
     request.request_timeout = options.timeout
     response_key = exchange.extra_dict['response_key']
     queue = exchange.queue
+    logger.info("Calling %s on %s....", request.method, request.url)
+    before = datetime.now()
     response = yield async_client.fetch(request, raise_error=False)
+    after = datetime.now()
+    dt = after - before
+    logger.debug("Got a reply #%i after %i ms", response.code,
+                 timedelta_total_ms(dt))
     redis_request_pool = get_redis_pool(queue.host, queue.port)
     with (yield redis_request_pool.connected_client()) as redis:
         yield redis.call('LPUSH', response_key,
@@ -116,11 +124,22 @@ def decr_counters_callback(hashes, future):
 
 @tornado.gen.coroutine
 def local_reinject_handler(single_iteration=False):
+    mlqlms = options.max_local_queue_lifetime_ms
+    deadline_us = timedelta(microseconds=(mlqlms * 1000))
     while True:
-        yield reinject_event.wait()
+        try:
+            yield reinject_event.wait(deadline=deadline_us)
+        except toro.Timeout:
+            pass
         while True:
             try:
                 exchange = local_reinject_queue.get_nowait()
+                if exchange.lifetime_in_local_queue_ms() > mlqlms:
+                    logger.debug("request reached max lifetime on local queue:"
+                                 "%i ms => scheduling reinject on bus",
+                                 exchange.lifetime_in_local_queue_ms)
+                    bus_reinject_queue.put_nowait(exchange)
+                    continue
                 try:
                     get_request_queue().put_nowait((exchange.priority,
                                                     exchange))
@@ -154,12 +173,13 @@ def bus_reinject_handler(single_iteration=False):
 
 @tornado.gen.coroutine
 def local_queue_handler(single_iteration=False):
-    """
-    Get a request for the toro queue, check the limits for each hash,
-    and process the request if there is a free worker
-    """
     while True:
         priority, exchange = yield get_request_queue().get()
+        lifetime = exchange.lifetime()
+        if lifetime > options.max_lifetime:
+            logger.warning("expired request (lifetime: %i) got from "
+                           "local queue => trash it", lifetime)
+            continue
         hashes = Limits.check(exchange.request)
         if hashes is None:
             local_reinject_queue.put(exchange)
