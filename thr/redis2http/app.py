@@ -5,6 +5,8 @@
 # See the LICENSE file for more information.
 
 import tornado
+import time
+import json
 import functools
 from six.moves import queue as _queue
 from tornado.options import define, options, parse_command_line
@@ -37,6 +39,10 @@ define("max_lifetime", help="Maximum lifetime (in second) for a request on "
 define("max_local_queue_lifetime_ms", help="Maximum lifetime (in ms) for a "
        "request on local queue before reuploading on bus", type=int,
        default=DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS)
+define("stats_file", type=str, help="Complete path of the json stat file",
+       default="/tmp/redis2http_stats.json")
+define("stats_frequency_ms", type=int, help="Stats file write frequency "
+       "(in ms) (0 => no stats write)", default=2000)
 
 redis_pools = {}
 request_queue = None
@@ -44,6 +50,7 @@ request_queue = None
 reinject_event = toro.Event()
 local_reinject_queue = toro.Queue()
 bus_reinject_queues = {}
+running_exchanges = {}
 
 toro.Queue()
 
@@ -80,7 +87,7 @@ def get_redis_pool(host, port):
 
 
 def get_redis_client(host, port):
-    return tornadis.Client(host=host, port=port,
+    return tornadis.Client(host=host, port=port, return_connection_error=True,
                            connect_timeout=options.timeout,
                            autoconnect=True)
 
@@ -90,6 +97,12 @@ def request_redis_handler(queue, single_iteration=False):
     redis = get_redis_client(queue.host, queue.port)
     while True:
         tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
+        if isinstance(tmp, tornadis.ConnectionError):
+            logger.warning("connection error while brpoping queue "
+                           "redis://%s:%i/%s => sleeping 5s and retrying",
+                           queue.host, queue.port, queue.queue)
+            yield tornado.gen.sleep(5)
+            continue
         if tmp:
             _, request = tmp
             rq = get_request_queue()
@@ -113,6 +126,7 @@ def request_redis_handler(queue, single_iteration=False):
 
 @tornado.gen.coroutine
 def process_request(exchange, hashes):
+    global running_exchanges
     async_client = tornado.httpclient.AsyncHTTPClient()
     request = exchange.request
     request.connect_timeout = options.timeout
@@ -122,6 +136,7 @@ def process_request(exchange, hashes):
     rid = exchange.request_id
     logger.info("Calling %s on %s (#%s)....", request.method, request.url, rid)
     before = datetime.now()
+    running_exchanges[rid] = (before, exchange)
     response = yield async_client.fetch(request, raise_error=False)
     after = datetime.now()
     dt = after - before
@@ -131,6 +146,7 @@ def process_request(exchange, hashes):
     with (yield redis_pool.connected_client()) as redis:
         yield redis.call('LPUSH', response_key,
                          serialize_http_response(response))
+    del(running_exchanges[rid])
 
 
 def decr_counters_callback(hashes, future):
@@ -218,6 +234,24 @@ def local_queue_handler(single_iteration=False):
             break
 
 
+def write_stats():
+    stats = {"epoch": time.time()}
+    stats["request_queue_size"] = get_request_queue().qsize()
+    stats["local_reinject_queue_size"] = local_reinject_queue.qsize()
+    for key, queue in bus_reinject_queues.items():
+        stats["bus_reinject_queue_%s_size" % key] = queue.qsize()
+    running_requests = {}
+    now = datetime.now()
+    for key, tmp in running_exchanges.items():
+        before, exchange = tmp
+        running_requests[key] = {"method": exchange.request.method,
+                                 "url": exchange.request.url,
+                                 "since_ms": timedelta_total_ms(now - before)}
+    stats["running_requests"] = running_requests
+    with open(options.stats_file, "w") as f:
+        f.write(json.dumps(stats, indent=4))
+
+
 def stop_loop(future):
     exc = future.exception()
     if exc is not None:
@@ -240,4 +274,8 @@ def main():
             launched_bus_reinject_handlers["%s:%i" % (host, port)] = True
     loop.add_future(local_reinject_handler(), stop_loop)
     loop.add_future(local_queue_handler(), stop_loop)
+    if options.stats_frequency_ms > 0:
+        stats_pc = tornado.ioloop.PeriodicCallback(write_stats,
+                                                   options.stats_frequency_ms)
+        stats_pc.start()
     loop.start()
