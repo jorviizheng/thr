@@ -4,7 +4,7 @@
 # This file is part of thr library released under the MIT license.
 # See the LICENSE file for more information.
 
-from thr.utils import unserialize_request_message
+from thr.utils import unserialize_request_message, make_unique_id
 import time
 
 
@@ -17,6 +17,7 @@ class HTTPRequestExchange(object):
         self.__request = None
         self.__body_link = None
         self.__extra_dict = None
+        self.__request_id = None
 
     def unserialize_request(self):
         force_host = "%s:%i" % (self.queue.http_host, self.queue.http_port)
@@ -49,6 +50,14 @@ class HTTPRequestExchange(object):
         big = self.__extra_dict.get('priority', 5)
         little = int(time.time() * 1000)
         return big * 10000000000000 - little
+
+    @property
+    def request_id(self):
+        if not self.__request_id:
+            self.unserialize_request()
+            self.__request_id = self.__extra_dict.get('request_id',
+                                                      make_unique_id())
+        return self.__request_id
 
     def lifetime_in_local_queue_ms(self):
         return int((time.time() - self.local_queue_time) * 1000)
