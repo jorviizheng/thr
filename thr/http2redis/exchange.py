@@ -7,6 +7,7 @@
 from tornado.httputil import HTTPHeaders
 from tornado.escape import parse_qs_bytes
 from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
+from thr.utils import make_unique_id
 
 
 class HTTPExchangeResponse(object):
@@ -33,6 +34,7 @@ class HTTPExchange(object):
         redis_queue: the name of the redis queue where to push the request.
         keyvalues: a dict key=>value to store custom key/values (helper for
             config file).
+        request_id: a unique id for the request
         priority: a value between 1 (high) and 9 (low) which will be the
             queue priority at redis2http side.
     """
@@ -47,6 +49,7 @@ class HTTPExchange(object):
         self.redis_queue = default_redis_queue
         self.keyvalues = {}
         self.output_default_body = None
+        self.request_id = make_unique_id()
         self.priority = 5
 
     def set_custom_value(self, key, value):

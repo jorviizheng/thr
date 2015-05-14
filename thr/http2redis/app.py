@@ -126,7 +126,8 @@ class Handler(RequestHandler):
                     dict_to_inject={
                         'response_key': response_key,
                         'priority': exchange.priority,
-                        'creation_time': time.time()
+                        'creation_time': time.time(),
+                        'request_id': exchange.request_id
                     })
                 yield redis.call('LPUSH', exchange.redis_queue,
                                  serialized_request)
