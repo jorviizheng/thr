@@ -42,14 +42,14 @@ class Limits(object):
                     if limit.check_hash(hash):
                         current_workers = get_counter(counter)
                         if not limit.check_limit(current_workers):
-                            logger.info("Request refused, reason : %s failed "
-                                        "to pass %s (%s > %s)", hash,
-                                        limit.key, current_workers,
-                                        limit._limit)
+                            logger.debug("Request refused, reason : %s failed "
+                                         "to pass %s (%s > %s)", hash,
+                                         limit.key, current_workers,
+                                         limit._limit)
                             return None
                         hashes.append(counter)
-        logger.info("Request accepted, updating the "
-                    "following counters : %s", str(hashes))
+        logger.debug("Request accepted, updating the "
+                     "following counters : %s", str(hashes))
         return hashes
 
 
