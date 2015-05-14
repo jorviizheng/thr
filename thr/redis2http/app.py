@@ -10,6 +10,7 @@ from six.moves import queue as _queue
 from tornado.options import define, options, parse_command_line
 import tornadis
 import toro
+import six
 import logging
 from datetime import timedelta, datetime
 
@@ -42,13 +43,23 @@ request_queue = None
 
 reinject_event = toro.Event()
 local_reinject_queue = toro.Queue()
-bus_reinject_queue = toro.Queue()
+bus_reinject_queues = {}
+
+toro.Queue()
 
 logger = logging.getLogger("thr.redis2http")
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
                                              max_clients=100000)
+
+
+def get_bus_reinject_queue(host, port):
+    global bus_reinject_queues
+    key = "%s:%i" % (host, port)
+    if key not in bus_reinject_queues:
+        bus_reinject_queues[key] = toro.Queue()
+    return bus_reinject_queues[key]
 
 
 def get_request_queue():
@@ -68,11 +79,15 @@ def get_redis_pool(host, port):
     return redis_pools[key]
 
 
+def get_redis_client(host, port):
+    return tornadis.Client(host=host, port=port,
+                           connect_timeout=options.timeout,
+                           autoconnect=True)
+
+
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
-    redis = tornadis.Client(host=queue.host, port=queue.port,
-                            connect_timeout=options.timeout,
-                            autoconnect=True)
+    redis = get_redis_client(queue.host, queue.port)
     while True:
         tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
         if tmp:
@@ -140,7 +155,8 @@ def local_reinject_handler(single_iteration=False):
                     logger.debug("request #%s reached max lifetime on local "
                                  "queue: %i ms => scheduling reinject on bus",
                                  rid, exchange.lifetime_in_local_queue_ms)
-                    bus_reinject_queue.put_nowait(exchange)
+                    host, port = exchange.queue.host, exchange.queue.port
+                    get_bus_reinject_queue(host, port).put_nowait(exchange)
                     continue
                 try:
                     get_request_queue().put_nowait((exchange.priority,
@@ -149,7 +165,8 @@ def local_reinject_handler(single_iteration=False):
                 except _queue.Full:
                     logger.debug("can't reinject request #%s on local queue "
                                  "(full) => scheduling reinject on bus", rid)
-                    bus_reinject_queue.put_nowait(exchange)
+                    host, port = exchange.queue.host, exchange.queue.port
+                    get_bus_reinject_queue(host, port).put_nowait(exchange)
             except _queue.Empty:
                 reinject_event.clear()
                 break
@@ -158,17 +175,22 @@ def local_reinject_handler(single_iteration=False):
 
 
 @tornado.gen.coroutine
-def bus_reinject_handler(single_iteration=False):
+def bus_reinject_handler(host, port, single_iteration=False):
+    redis = get_redis_client(host, port)
+    queue = get_bus_reinject_queue(host, port)
     while True:
-        exchange = yield bus_reinject_queue.get()
+        exchange = yield queue.get()
         rid = exchange.request_id
-        redis_pool = get_redis_pool(exchange.queue.host, exchange.queue.port)
-        with (yield redis_pool.connected_client()) as redis:
-            logger.debug("reinject request #%s on redis://%s:%i/%s", rid,
-                         exchange.queue.host, exchange.queue.port,
-                         exchange.queue.queue)
-            yield redis.call('LPUSH', exchange.queue.queue,
-                             exchange.serialized_request)
+        logger.debug("reinject request #%s on redis://%s:%i/%s", rid, host,
+                     port, exchange.queue.queue)
+        result = yield redis.call('LPUSH', exchange.queue.queue,
+                                  exchange.serialized_request)
+        if not isinstance(result, six.integer_types):
+            logger.warning("can't reinject request #%s on redis://%s:%i/%s "
+                           "=> sleeping 5s and re-queueing the request",
+                           rid, host, port, exchange.queue.queue)
+            yield tornado.gen.sleep(5)
+            queue.put_nowait(exchange)
         if single_iteration:
             break
 
@@ -208,9 +230,14 @@ def main():
     if options.config is not None:
         exec(open(options.config).read(), {})
     loop = tornado.ioloop.IOLoop.instance()
+    launched_bus_reinject_handlers = {}
     for queue in Queues:
+        host = queue.host
+        port = queue.port
         loop.add_future(request_redis_handler(queue), stop_loop)
-    loop.add_future(bus_reinject_handler(), stop_loop)
+        if "%s:%i" % (host, port) not in launched_bus_reinject_handlers:
+            loop.add_future(bus_reinject_handler(host, port), stop_loop)
+            launched_bus_reinject_handlers["%s:%i" % (host, port)] = True
     loop.add_future(local_reinject_handler(), stop_loop)
     loop.add_future(local_queue_handler(), stop_loop)
     loop.start()
