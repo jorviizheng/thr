@@ -111,8 +111,8 @@ def process_request(exchange, hashes):
     dt = after - before
     logger.debug("Got a reply #%i after %i ms", response.code,
                  timedelta_total_ms(dt))
-    redis_request_pool = get_redis_pool(queue.host, queue.port)
-    with (yield redis_request_pool.connected_client()) as redis:
+    redis_pool = get_redis_pool(queue.host, queue.port)
+    with (yield redis_pool.connected_client()) as redis:
         yield redis.call('LPUSH', response_key,
                          serialize_http_response(response))
 
@@ -159,9 +159,8 @@ def local_reinject_handler(single_iteration=False):
 def bus_reinject_handler(single_iteration=False):
     while True:
         exchange = yield bus_reinject_queue.get()
-        redis_request_pool = get_redis_pool(exchange.queue.host,
-                                            exchange.queue.port)
-        with (yield redis_request_pool.connected_client()) as redis:
+        redis_pool = get_redis_pool(exchange.queue.host, exchange.queue.port)
+        with (yield redis_pool.connected_client()) as redis:
             logger.debug("reinject request on redis://%s:%i/%s",
                          exchange.queue.host, exchange.queue.port,
                          exchange.queue.queue)
