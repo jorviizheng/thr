@@ -5,12 +5,15 @@
 # See the LICENSE file for more information.
 
 from tornado import ioloop
-from tornado import gen
+from tornado import gen, httpserver
 from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
 import time
+import signal
+import functools
 import datetime
+import logging
 
 from thr.http2redis.rules import Rules
 from thr.http2redis.exchange import HTTPExchange
@@ -32,6 +35,7 @@ define("redis_queue", default=DEFAULT_REDIS_QUEUE,
        help="Default redis queue")
 
 redis_pools = {}
+running_exchanges = {}
 
 
 def get_redis_pool(host, port):
@@ -44,6 +48,8 @@ def get_redis_pool(host, port):
 
 
 class Handler(RequestHandler):
+
+    __request_id = None
 
     def get(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
@@ -65,6 +71,14 @@ class Handler(RequestHandler):
 
     def patch(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
+
+    def finish(self, chunk=None):
+        global running_exchanges
+        RequestHandler.finish(self, chunk)
+        try:
+            del(running_exchanges[self.__request_id])
+        except KeyError:
+            pass
 
     def return_http_reply(self, exchange, force_status=None, force_body=None):
         status = exchange.response.status_code
@@ -103,6 +117,8 @@ class Handler(RequestHandler):
                                 default_redis_host=options.redis_host,
                                 default_redis_port=options.redis_port,
                                 default_redis_queue=options.redis_queue)
+        self.__request_id = exchange.request_id
+        running_exchanges[self.__request_id] = exchange
         yield Rules.execute_input_actions(exchange)
         if exchange.response.status_code is not None and \
                 exchange.response.status_code != "null":
@@ -120,7 +136,7 @@ class Handler(RequestHandler):
             redis_pool = get_redis_pool(exchange.redis_host,
                                         exchange.redis_port)
             with (yield redis_pool.connected_client()) as redis:
-                response_key = make_unique_id()
+                response_key = "thr:queue:response:%s" % make_unique_id()
                 serialized_request = serialize_http_request(
                     exchange.request,
                     dict_to_inject={
@@ -156,9 +172,33 @@ def make_app():
     return Application([url(r"/.*", Handler)])
 
 
+def sig_handler(server, sig, frame):
+    logging.warning('Caught signal: %s', sig)
+    ioloop.IOLoop.instance().add_callback_from_signal(shutdown, server)
+
+
+def shutdown(server):
+    logging.info('Stopping http server')
+    server.stop()
+    logging.info('Will shutdown in (max) %s seconds...', options.timeout)
+    io_loop = ioloop.IOLoop.instance()
+    deadline = time.time() + options.timeout
+
+    def stop_loop():
+        now = time.time()
+        if now < deadline and len(running_exchanges) > 0:
+            io_loop.add_timeout(now + 1, stop_loop)
+        else:
+            io_loop.stop()
+            logging.info('Shutdown')
+    stop_loop()
+
+
 def main():
     parse_command_line()
     print("Start http2redis on http://localhost:{}".format(options.port))
     app = make_app()
-    app.listen(options.port)
+    server = httpserver.HTTPServer(app)
+    server.listen(options.port)
+    signal.signal(signal.SIGTERM, functools.partial(sig_handler, server))
     ioloop.IOLoop.instance().start()
