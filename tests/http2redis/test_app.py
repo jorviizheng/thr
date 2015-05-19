@@ -89,7 +89,8 @@ class TestApp(AsyncHTTPTestCase):
         result = yield self.redis.call('BRPOP', 'test-queue', 1)
         data = json.loads(result[1].decode())
         self.assertEqual(data['path'], '/quux')
-        self.assertEqual(data['extra']['response_key'], self.response_key)
+        self.assertEqual(data['extra']['response_key'],
+                         "thr:queue:response:%s" % self.response_key)
 
     @gen_test
     def test_matching_coroutine_rule(self):
