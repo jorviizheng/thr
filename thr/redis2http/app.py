@@ -144,13 +144,26 @@ def process_request(exchange, hashes):
     request.connect_timeout = options.timeout
     request.request_timeout = options.timeout
     request.decompress_response = False
+    request.follow_redirects = False
     response_key = exchange.extra_dict['response_key']
     queue = exchange.queue
     rid = exchange.request_id
     logger.info("Calling %s on %s (#%s)....", request.method, request.url, rid)
     before = datetime.now()
     running_exchanges[rid] = (before, exchange)
-    response = yield async_client.fetch(request, raise_error=False)
+    redirection = 0
+    while redirection < 10:
+        response = yield async_client.fetch(request, raise_error=False)
+        location = response.headers.get('Location', None)
+        if response.headers.get('X-Thr-FollowRedirects', "0") == "1" and response.code in (301, 302, 307, 308) and location:
+            # redirection
+            logger.debug("internal redirection => %s", location)
+            request.url = location
+            redirection += 1
+            continue
+        break
+    if redirection >= 10:
+        response = tornado.httpclient.HTTPResponse(request, 310)
     after = datetime.now()
     dt = after - before
     logger.debug("Got a reply #%i after %i ms (#%s)", response.code,
