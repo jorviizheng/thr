@@ -14,6 +14,7 @@ import tornadis
 import toro
 import six
 import logging
+import signal
 from datetime import timedelta, datetime
 
 from thr.redis2http.limits import Limits
@@ -46,6 +47,15 @@ define("stats_frequency_ms", type=int, help="Stats file write frequency "
 
 redis_pools = {}
 request_queue = None
+running_request_redis_handler_number = 0
+running_bus_reinject_handler_number = 0
+
+# stopping mode
+# (0 => not stopping, 1 => stopping request_redis_handler,
+#  2 => stopping local_queue_handler, 3 => stopping local_reinject_handler
+#  4 => stopping bus_reinject_handlers, 5 => finishing running exchanges,
+#  6 => stopped)
+stopping = 0
 
 reinject_event = toro.Event()
 local_reinject_queue = toro.Queue()
@@ -95,7 +105,7 @@ def get_redis_client(host, port):
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
     redis = get_redis_client(queue.host, queue.port)
-    while True:
+    while stopping < 1:
         tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
         if isinstance(tmp, tornadis.ConnectionError):
             logger.warning("connection error while brpoping queue "
@@ -122,6 +132,8 @@ def request_redis_handler(queue, single_iteration=False):
             yield rq.put((priority, exchange))
         if single_iteration:
             break
+    logger.info("request_redis_handler redis://%s:%i/%s stopped", queue.host,
+                queue.port, queue.queue)
 
 
 @tornado.gen.coroutine
@@ -156,9 +168,10 @@ def decr_counters_callback(hashes, future):
 
 @tornado.gen.coroutine
 def local_reinject_handler(single_iteration=False):
+    global stopping
     mlqlms = options.max_local_queue_lifetime_ms
     deadline_us = timedelta(microseconds=(mlqlms * 1000))
-    while True:
+    while stopping < 3:
         try:
             yield reinject_event.wait(deadline=deadline_us)
         except toro.Timeout:
@@ -167,6 +180,11 @@ def local_reinject_handler(single_iteration=False):
             try:
                 exchange = local_reinject_queue.get_nowait()
                 rid = exchange.request_id
+                if stopping >= 3:
+                    logger.debug("stopping => reinject #%s on bus", rid)
+                    host, port = exchange.queue.host, exchange.queue.port
+                    get_bus_reinject_queue(host, port).put_nowait(exchange)
+                    continue
                 if exchange.lifetime_in_local_queue_ms() > mlqlms:
                     logger.debug("request #%s reached max lifetime on local "
                                  "queue: %i ms => scheduling reinject on bus",
@@ -188,6 +206,7 @@ def local_reinject_handler(single_iteration=False):
                 break
         if single_iteration:
             break
+    logger.info("local_reinject_handler stopped")
 
 
 @tornado.gen.coroutine
@@ -195,7 +214,12 @@ def bus_reinject_handler(host, port, single_iteration=False):
     redis = get_redis_client(host, port)
     queue = get_bus_reinject_queue(host, port)
     while True:
-        exchange = yield queue.get()
+        if stopping >= 4 and queue.qsize() == 0:
+            break
+        try:
+            exchange = yield queue.get(deadline=3)
+        except toro.Timeout:
+            continue
         rid = exchange.request_id
         logger.debug("reinject request #%s on redis://%s:%i/%s", rid, host,
                      port, exchange.queue.queue)
@@ -209,12 +233,16 @@ def bus_reinject_handler(host, port, single_iteration=False):
             queue.put_nowait(exchange)
         if single_iteration:
             break
+    logger.info("bus_reinject_handler redis://%s:%i stopped", host, port)
 
 
 @tornado.gen.coroutine
 def local_queue_handler(single_iteration=False):
-    while True:
-        priority, exchange = yield get_request_queue().get()
+    while stopping < 2:
+        try:
+            priority, exchange = yield get_request_queue().get(deadline=3)
+        except toro.Timeout:
+            continue
         rid = exchange.request_id
         lifetime = exchange.lifetime()
         if lifetime > options.max_lifetime:
@@ -232,10 +260,11 @@ def local_queue_handler(single_iteration=False):
             tornado.ioloop.IOLoop.instance().add_future(future, cb)
         if single_iteration:
             break
+    logger.info("local_queue_handler stopped")
 
 
 def write_stats():
-    stats = {"epoch": time.time()}
+    stats = {"epoch": time.time(), "stopping_mode": stopping}
     stats["request_queue_size"] = get_request_queue().qsize()
     stats["local_reinject_queue_size"] = local_reinject_queue.qsize()
     for key, queue in bus_reinject_queues.items():
@@ -248,6 +277,10 @@ def write_stats():
                                  "url": exchange.request.url,
                                  "since_ms": timedelta_total_ms(now - before)}
     stats["running_requests"] = running_requests
+    stats["running_bus_reinject_handler_number"] = \
+        running_bus_reinject_handler_number
+    stats["running_request_redis_handler_number"] = \
+        running_request_redis_handler_number
     with open(options.stats_file, "w") as f:
         f.write(json.dumps(stats, indent=4))
 
@@ -256,10 +289,50 @@ def stop_loop(future):
     exc = future.exception()
     if exc is not None:
         raise exc
-    tornado.ioloop.IOLoop.instance().stop()
+    _stop_loop()
+
+
+def _stop_loop():
+    global running_request_redis_handler_number, stopping,\
+        running_bus_reinject_handler_number
+    if stopping == 0:
+        tornado.ioloop.IOLoop.instance().stop()
+    else:
+        if stopping == 1:
+            running_request_redis_handler_number -= 1
+            if running_request_redis_handler_number == 0:
+                stopping += 1
+        elif stopping == 4:
+            running_bus_reinject_handler_number -= 1
+            if running_bus_reinject_handler_number == 0:
+                stopping += 1
+                tornado.ioloop.IOLoop.instance().call_later(1, _stop_loop)
+        elif stopping == 5:
+            if len(running_exchanges) == 0:
+                logger.info("stopping ioloop...")
+                tornado.ioloop.IOLoop.instance().stop()
+            else:
+                logger.info("waiting for %i request(s) to finish...",
+                            len(running_exchanges))
+                tornado.ioloop.IOLoop.instance().call_later(1, _stop_loop)
+        else:
+            stopping += 1
+
+
+def sig_handler(sig, frame):
+    logging.info('caught signal: %s', sig)
+    tornado.ioloop.IOLoop.instance().add_callback_from_signal(shutdown)
+
+
+def shutdown():
+    global stopping
+    stopping = 1
+    reinject_event.set()
 
 
 def main():
+    global running_request_redis_handler_number,\
+        running_bus_reinject_handler_number
     parse_command_line()
     if options.config is not None:
         exec(open(options.config).read(), {})
@@ -269,13 +342,19 @@ def main():
         host = queue.host
         port = queue.port
         loop.add_future(request_redis_handler(queue), stop_loop)
+        running_request_redis_handler_number += 1
         if "%s:%i" % (host, port) not in launched_bus_reinject_handlers:
             loop.add_future(bus_reinject_handler(host, port), stop_loop)
             launched_bus_reinject_handlers["%s:%i" % (host, port)] = True
+            running_bus_reinject_handler_number += 1
     loop.add_future(local_reinject_handler(), stop_loop)
     loop.add_future(local_queue_handler(), stop_loop)
     if options.stats_frequency_ms > 0:
         stats_pc = tornado.ioloop.PeriodicCallback(write_stats,
                                                    options.stats_frequency_ms)
         stats_pc.start()
+    signal.signal(signal.SIGTERM, sig_handler)
+    tornado.ioloop.IOLoop.instance().add_callback(logger.info,
+                                                  "redis2http started")
     loop.start()
+    logger.info("redis2http stopped")
