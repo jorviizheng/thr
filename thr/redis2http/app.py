@@ -213,11 +213,12 @@ def local_reinject_handler(single_iteration=False):
 def bus_reinject_handler(host, port, single_iteration=False):
     redis = get_redis_client(host, port)
     queue = get_bus_reinject_queue(host, port)
+    deadline = timedelta(seconds=3)
     while True:
         if stopping >= 4 and queue.qsize() == 0:
             break
         try:
-            exchange = yield queue.get(deadline=3)
+            exchange = yield queue.get(deadline=deadline)
         except toro.Timeout:
             continue
         rid = exchange.request_id
@@ -238,9 +239,11 @@ def bus_reinject_handler(host, port, single_iteration=False):
 
 @tornado.gen.coroutine
 def local_queue_handler(single_iteration=False):
+    deadline = timedelta(seconds=3)
     while stopping < 2:
         try:
-            priority, exchange = yield get_request_queue().get(deadline=3)
+            priority, exchange = \
+                yield get_request_queue().get(deadline=deadline)
         except toro.Timeout:
             continue
         rid = exchange.request_id
