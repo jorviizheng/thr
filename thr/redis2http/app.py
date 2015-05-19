@@ -143,6 +143,7 @@ def process_request(exchange, hashes):
     request = exchange.request
     request.connect_timeout = options.timeout
     request.request_timeout = options.timeout
+    request.decompress_response = False
     response_key = exchange.extra_dict['response_key']
     queue = exchange.queue
     rid = exchange.request_id

@@ -74,7 +74,10 @@ class Handler(RequestHandler):
 
     def finish(self, chunk=None):
         global running_exchanges
-        RequestHandler.finish(self, chunk)
+        if chunk is None or len(chunk) == 0:
+            RequestHandler.finish(self)
+        else:
+            RequestHandler.finish(self, chunk)
         try:
             del(running_exchanges[self.__request_id])
         except KeyError:
@@ -98,10 +101,7 @@ class Handler(RequestHandler):
         for name in exchange.response.headers.keys():
             value = exchange.response.headers[name]
             self.set_header(name, value)
-        if body is not None:
-            self.finish(body)
-        else:
-            self.finish()
+        self.finish(body)
 
     def update_exchange_from_response_message(self, exchange, message):
         (status_code, body, body_link, headers, _) = \
