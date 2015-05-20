@@ -362,8 +362,10 @@ def main():
     for queue in Queues:
         host = queue.host
         port = queue.port
-        loop.add_future(request_redis_handler(queue), stop_loop)
-        running_request_redis_handler_number += 1
+        workers = queue.workers
+        for i in range(0, workers):
+            loop.add_future(request_redis_handler(queue), stop_loop)
+            running_request_redis_handler_number += 1
         if "%s:%i" % (host, port) not in launched_bus_reinject_handlers:
             loop.add_future(bus_reinject_handler(host, port), stop_loop)
             launched_bus_reinject_handlers["%s:%i" % (host, port)] = True

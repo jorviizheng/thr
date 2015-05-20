@@ -34,14 +34,15 @@ class Queues(object):
 class Queue(object):
 
     def __init__(self, host, port, queue, http_host="localhost",
-                 http_port=DEFAULT_HTTP_PORT):
+                 http_port=DEFAULT_HTTP_PORT, workers=1):
         self.host = host
         self.port = port
         self.queue = queue
         self.http_host = http_host
         self.http_port = http_port
+        self.workers = workers
 
 
 def add_queue(host, port, queue, http_host="localhost",
-              http_port=DEFAULT_HTTP_PORT):
-    Queues.add(Queue(host, port, queue, http_host, http_port))
+              http_port=DEFAULT_HTTP_PORT, workers=1):
+    Queues.add(Queue(host, port, queue, http_host, http_port, workers))
