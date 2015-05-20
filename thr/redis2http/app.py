@@ -155,8 +155,9 @@ def process_request(exchange, hashes):
     while redirection < 10:
         response = yield async_client.fetch(request, raise_error=False)
         location = response.headers.get('Location', None)
-        if response.headers.get('X-Thr-FollowRedirects', "0") == "1" and response.code in (301, 302, 307, 308) and location:
-            # redirection
+        if response.headers.get('X-Thr-FollowRedirects', "0") == "1" and \
+                response.code in (301, 302, 307, 308) and location:
+            # redirection
             logger.debug("internal redirection => %s", location)
             request.url = location
             redirection += 1
@@ -169,9 +170,12 @@ def process_request(exchange, hashes):
     logger.debug("Got a reply #%i after %i ms (#%s)", response.code,
                  timedelta_total_ms(dt), rid)
     redis_pool = get_redis_pool(queue.host, queue.port)
+    pipeline = tornadis.Pipeline()
+    pipeline.stack_call("LPUSH", response_key,
+                        serialize_http_response(response))
+    pipeline.stack_call("EXPIRE", response_key, options.timeout)
     with (yield redis_pool.connected_client()) as redis:
-        yield redis.call('LPUSH', response_key,
-                         serialize_http_response(response))
+        yield redis.call(pipeline)
     del(running_exchanges[rid])
 
 
