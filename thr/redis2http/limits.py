@@ -36,13 +36,14 @@ class Limits(object):
             hash = computed_hashes[hash_func]
             if hash is not None:
                 if limit.check_hash(hash):
-                    current_counter = get_counter(name)
+                    counter = "%s%s" % (name, limit.counter_suffix(hash))
+                    current_counter = get_counter(counter)
                     if not limit.check_limit(current_counter):
                         logger.debug("Request refused, reason : %s failed "
-                                     "to pass (%s > %s)", name,
+                                     "to pass (%s > %s)", counter,
                                      current_counter, limit.limit)
                         return None
-                    hashes.append(name)
+                    hashes.append(counter)
         logger.debug("Request accepted, updating the "
                      "following counters : %s", str(hashes))
         return hashes
@@ -50,12 +51,24 @@ class Limits(object):
 
 class Limit(object):
 
-    def __init__(self, hash_func, hash_value, limit):
+    def __init__(self, hash_func, hash_value, limit, show_in_stats=True):
+        if callable(hash_value):
+            if hash_value != hash_func:
+                raise Exception("hash_value is callable and not hash_func")
         self.hash_func = hash_func
         self.hash_value = hash_value
         self.limit = limit
+        self.show_in_stats = show_in_stats
+
+    def counter_suffix(self, hashed_message):
+        if self.hash_value == self.hash_func:
+            return "=%s" % hashed_message
+        else:
+            return ""
 
     def check_hash(self, hashed_message):
+        if self.hash_func == self.hash_value:
+            return True
         if isinstance(self.hash_value, (glob, regexp, diff)):
             return self.hash_value.match(hashed_message)
         else:
@@ -65,7 +78,8 @@ class Limit(object):
         return self.limit > value
 
 
-def add_max_limit(name, hash_func, hash_value, max_limit):
+def add_max_limit(name, hash_func, hash_value, max_limit,
+                  show_in_stats=True):
     """
     Add a maximim limit for the specified value of the hash function
 
@@ -75,10 +89,14 @@ def add_max_limit(name, hash_func, hash_value, max_limit):
         hash_value: a string, :class:`~thr.http2redis.rules.glob` object
             or a compiled regular expression object
         max_limit: an int
+        show_in_stats: a boolean to hide (False) some limits from
+            counter stats (if too many values).
 
     Examples:
         >>> def my_hash(message):
                 return "toto"
         >>> add_max_limit("too_limit", my_hash, "toto", 3)
     """
-    Limits.add(name, Limit(hash_func, hash_value, max_limit))
+    if "=" in name:
+        raise Exception("'=' not allowed in limit names")
+    Limits.add(name, Limit(hash_func, hash_value, max_limit, show_in_stats))

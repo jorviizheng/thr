@@ -323,8 +323,9 @@ def write_stats():
     stats['expired_request_counter'] = expired_request_counter
     stats['counters'] = {}
     for name, limit in six.iteritems(Limits.limits):
-        stats['counters'][name + "_value"] = get_counter(name)
-        stats['counters'][name + "_limit"] = limit.limit
+        if limit.show_in_stats:
+            stats['counters'][name + "_limit"] = limit.limit
+            stats['counters'][name + "_value"] = get_counter(name)
     with open(options.stats_file, "w") as f:
         f.write(json.dumps(stats, indent=4))
 
@@ -403,4 +404,8 @@ def main():
     tornado.ioloop.IOLoop.instance().add_callback(logger.info,
                                                   "redis2http started")
     loop.start()
+    try:
+        os.remove(options.stats_file)
+    except:
+        pass
     logger.info("redis2http stopped")
