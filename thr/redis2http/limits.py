@@ -6,7 +6,6 @@
 
 
 import six
-import uuid
 from thr.utils import glob, regexp, diff
 from thr.redis2http.counter import get_counter
 import logging
@@ -17,37 +16,33 @@ logger = logging.getLogger("thr.redis2http.limits")
 class Limits(object):
 
     limits = {}
-    function_ids = {}
 
     @classmethod
     def reset(cls):
         cls.limits = {}
 
     @classmethod
-    def add(cls, hash_func, limit):
-        if hash_func not in cls.limits:
-            cls.limits[hash_func] = [limit]
-            cls.function_ids[hash_func] = str(uuid.uuid4())
-        else:
-            cls.limits[hash_func].append(limit)
+    def add(cls, name, limit):
+        cls.limits[name] = limit
 
     @classmethod
     def check(cls, message):
         hashes = []
-        for hash_func, limits in six.iteritems(cls.limits):
-            hash = hash_func(message)
-            if hash:
-                for limit in limits:
-                    counter = cls.function_ids[hash_func]+'_'+limit.key
-                    if limit.check_hash(hash):
-                        current_workers = get_counter(counter)
-                        if not limit.check_limit(current_workers):
-                            logger.debug("Request refused, reason : %s failed "
-                                         "to pass %s (%s > %s)", hash,
-                                         limit.key, current_workers,
-                                         limit._limit)
-                            return None
-                        hashes.append(counter)
+        computed_hashes = {}
+        for name, limit in six.iteritems(cls.limits):
+            hash_func = limit.hash_func
+            if hash_func not in computed_hashes:
+                computed_hashes[hash_func] = hash_func(message)
+            hash = computed_hashes[hash_func]
+            if hash is not None:
+                if limit.check_hash(hash):
+                    current_counter = get_counter(name)
+                    if not limit.check_limit(current_counter):
+                        logger.debug("Request refused, reason : %s failed "
+                                     "to pass (%s > %s)", name,
+                                     current_counter, limit.limit)
+                        return None
+                    hashes.append(name)
         logger.debug("Request accepted, updating the "
                      "following counters : %s", str(hashes))
         return hashes
@@ -55,32 +50,27 @@ class Limits(object):
 
 class Limit(object):
 
-    def __init__(self, hash, limit):
-        self._hash = hash
-        self._limit = limit
-
-    @property
-    def key(self):
-        if isinstance(self._hash, six.string_types):
-            return self._hash
-        else:
-            return str(self._hash)
+    def __init__(self, hash_func, hash_value, limit):
+        self.hash_func = hash_func
+        self.hash_value = hash_value
+        self.limit = limit
 
     def check_hash(self, hashed_message):
-        if isinstance(self._hash, (glob, regexp, diff)):
-            return self._hash.match(hashed_message)
+        if isinstance(self.hash_value, (glob, regexp, diff)):
+            return self.hash_value.match(hashed_message)
         else:
-            return self._hash == hashed_message
+            return self.hash_value == hashed_message
 
     def check_limit(self, value):
-        return self._limit > value
+        return self.limit > value
 
 
-def add_max_limit(hash_func, hash_value, max_limit):
+def add_max_limit(name, hash_func, hash_value, max_limit):
     """
     Add a maximim limit for the specified value of the hash function
 
     Args:
+        name: a limit name (unique)
         hash_func: a hash function
         hash_value: a string, :class:`~thr.http2redis.rules.glob` object
             or a compiled regular expression object
@@ -89,6 +79,6 @@ def add_max_limit(hash_func, hash_value, max_limit):
     Examples:
         >>> def my_hash(message):
                 return "toto"
-        >>> add_max_limit(my_hash, "toto", 3)
+        >>> add_max_limit("too_limit", my_hash, "toto", 3)
     """
-    Limits.add(hash_func, Limit(hash_value, max_limit))
+    Limits.add(name, Limit(hash_func, hash_value, max_limit))

@@ -146,7 +146,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         fetch_mock.side_effect = test_fetch
 
         Limits.reset()
-        add_max_limit(lambda r: r.url, glob("*/foo"), 3)
+        add_max_limit("foo", lambda r: r.url, glob("*/foo"), 3)
 
         set_counter('uuid_*/foo', 1)
 
@@ -178,7 +178,7 @@ class TestRedis2HttpApp(AsyncTestCase):
     @gen_test
     def test_local_reinject_handler(self):
         Limits.reset()
-        add_max_limit(lambda r: r.url, glob("*/foo"), 3)
+        add_max_limit("foo", lambda r: r.url, glob("*/foo"), 3)
 
         set_counter('uuid_*/foo', 3)
 

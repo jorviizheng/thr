@@ -37,91 +37,91 @@ class TestLimits(TestCase):
         mock_object.return_value = "uuid"
 
     def test_add_limit(self):
-        add_max_limit(uri_hash_func, "/foo", 4)
+        add_max_limit("foo", uri_hash_func, "/foo", 4)
         self.assertEqual(len(Limits.limits), 1)
-        add_max_limit(method_hash_func, "POST", 1)
+        add_max_limit("post", method_hash_func, "POST", 1)
         self.assertEqual(len(Limits.limits), 2)
-        self.assertIsInstance(Limits.limits[uri_hash_func][0],
+        self.assertIsInstance(Limits.limits["foo"],
                               Limit)
-        self.assertIsInstance(Limits.limits[method_hash_func][0],
+        self.assertIsInstance(Limits.limits["post"],
                               Limit)
 
     def test_simple_limits(self):
-        add_max_limit(uri_hash_func, "/foo", 4)
-        add_max_limit(method_hash_func, diff("GET"), 1)
+        add_max_limit("foo", uri_hash_func, "/foo", 4)
+        add_max_limit("get", method_hash_func, diff("GET"), 1)
 
-        set_counter('uuid_/foo', 3)
+        set_counter('foo', 3)
 
         message = HTTPServerRequest("GET", "/foo")
         hashes = Limits.check(message)
-        self.assertEqual(hashes, ["uuid_/foo"])
+        self.assertEqual(hashes, ["foo"])
 
-        set_counter('uuid_not(GET)', 2)
+        set_counter('get', 2)
         message = HTTPServerRequest("POST", "/foo")
         hashes = Limits.check(message)
         self.assertFalse(hashes)
 
-        del_counter('uuid_/foo')
-        del_counter('uuid_POST')
+        del_counter('foo')
+        del_counter('get')
 
     def test_three_max_limits(self):
-        add_max_limit(uri_hash_func, "/foo", 4)
-        add_max_limit(uri_hash_func, "/bar", 3)
-        add_max_limit(method_hash_func, "POST", 2)
+        add_max_limit("foo", uri_hash_func, "/foo", 4)
+        add_max_limit("bar", uri_hash_func, "/bar", 3)
+        add_max_limit("post", method_hash_func, "POST", 2)
 
-        set_counter('uuid_/foo', 3)
+        set_counter('foo', 3)
         message = HTTPServerRequest("GET", "/foo")
         hashes = Limits.check(message)
-        self.assertEqual(hashes, ["uuid_/foo"])
+        self.assertEqual(hashes, ["foo"])
 
-        set_counter('uuid_POST', 1)
+        set_counter('post', 1)
         message = HTTPServerRequest("POST", "/foo")
         hashes = Limits.check(message)
-        assertCountEqual(self, hashes, ["uuid_/foo", "uuid_POST"])
+        assertCountEqual(self, hashes, ["foo", "post"])
 
-        set_counter('uuid_/bar', 4)
+        set_counter('bar', 4)
         message = HTTPServerRequest("GET", "/bar")
         hashes = Limits.check(message)
         self.assertFalse(hashes)
 
-        del_counter('uuid_/foo')
-        del_counter('uuid_POST')
-        del_counter('uuid_/bar')
+        del_counter('foo')
+        del_counter('post')
+        del_counter('bar')
 
     def test_glob_limit(self):
-        add_max_limit(uri_hash_func, glob("/foo*"), 2)
+        add_max_limit("foo", uri_hash_func, glob("/foo*"), 2)
 
-        set_counter('uuid_/foo*', 3)
+        set_counter('foo', 3)
         message = HTTPServerRequest("GET", "/foo")
         hashes = Limits.check(message)
         self.assertFalse(hashes)
 
-        set_counter('uuid_/foo*', 0)
+        set_counter('foo', 0)
         message = HTTPServerRequest("GET", "/bar")
         hashes = Limits.check(message)
         self.assertEqual(hashes, [])
 
         message = HTTPServerRequest("GET", "/foobar")
         hashes = Limits.check(message)
-        self.assertEqual(hashes, ["uuid_/foo*"])
+        self.assertEqual(hashes, ["foo"])
 
         del_counter('uuid_/foo*')
 
     def test_regexp_limit(self):
-        add_max_limit(method_hash_func, regexp("[A-Z]{4}"), 3)
+        add_max_limit("regexp", method_hash_func, regexp("[A-Z]{4}"), 3)
 
-        set_counter('uuid_[A-Z]{4}', 2)
+        set_counter('regexp', 2)
         message = HTTPServerRequest("GET", "/foo")
         hashes = Limits.check(message)
         self.assertEqual(hashes, [])
 
         message = HTTPServerRequest("HEAD", "/foo")
         hashes = Limits.check(message)
-        self.assertEqual(hashes, ["uuid_[A-Z]{4}"])
+        self.assertEqual(hashes, ["regexp"])
 
-        set_counter('uuid_[A-Z]{4}', 5)
+        set_counter('regexp', 5)
         message = HTTPServerRequest("POST", "/foo")
         hashes = Limits.check(message)
         self.assertFalse(hashes)
 
-        del_counter('uuid_[A-Z]{4}')
+        del_counter('regexp')

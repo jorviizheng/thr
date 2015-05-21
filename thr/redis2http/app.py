@@ -21,6 +21,7 @@ from thr.redis2http.limits import Limits
 from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queues
 from thr.redis2http.counter import incr_counters, decr_counters
+from thr.redis2http.counter import get_counter
 from thr.utils import serialize_http_response, timedelta_total_ms
 from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
@@ -49,6 +50,10 @@ redis_pools = {}
 request_queue = None
 running_request_redis_handler_number = 0
 running_bus_reinject_handler_number = 0
+total_request_counter = 0
+expired_request_counter = 0
+local_reinject_counter = 0
+bus_reinject_counter = 0
 
 # stopping mode
 # (0 => not stopping, 1 => stopping request_redis_handler,
@@ -104,6 +109,7 @@ def get_redis_client(host, port):
 
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
+    global expired_request_counter
     redis = get_redis_client(queue.host, queue.port)
     while stopping < 1:
         tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
@@ -123,6 +129,7 @@ def request_redis_handler(queue, single_iteration=False):
                 logger.warning("expired request #%s (lifetime: %i) got from "
                                "queue redis://%s:%i/%s => trash it", rid,
                                lifetime, queue.host, queue.port, queue.queue)
+                expired_request_counter += 1
                 continue
             priority = exchange.priority
             logger.debug("Got request #%s (lifetime: %i) got from "
@@ -180,8 +187,10 @@ def process_request(exchange, hashes):
 
 
 def decr_counters_callback(hashes, future):
+    global total_request_counter
     decr_counters(hashes)
     reinject_event.set()
+    total_request_counter += 1
 
 
 @tornado.gen.coroutine
@@ -229,6 +238,7 @@ def local_reinject_handler(single_iteration=False):
 
 @tornado.gen.coroutine
 def bus_reinject_handler(host, port, single_iteration=False):
+    global bus_reinject_counter
     redis = get_redis_client(host, port)
     queue = get_bus_reinject_queue(host, port)
     deadline = timedelta(seconds=3)
@@ -250,6 +260,8 @@ def bus_reinject_handler(host, port, single_iteration=False):
                            rid, host, port, exchange.queue.queue)
             yield tornado.gen.sleep(5)
             queue.put_nowait(exchange)
+        else:
+            bus_reinject_counter += 1
         if single_iteration:
             break
     logger.info("bus_reinject_handler redis://%s:%i stopped", host, port)
@@ -257,6 +269,7 @@ def bus_reinject_handler(host, port, single_iteration=False):
 
 @tornado.gen.coroutine
 def local_queue_handler(single_iteration=False):
+    global expired_request_counter, local_reinject_counter
     deadline = timedelta(seconds=3)
     while stopping < 2:
         try:
@@ -269,10 +282,12 @@ def local_queue_handler(single_iteration=False):
         if lifetime > options.max_lifetime:
             logger.warning("expired request #%s (lifetime: %i) got from "
                            "local queue => trash it", rid, lifetime)
+            expired_request_counter += 1
             continue
         hashes = Limits.check(exchange.request)
         if hashes is None:
             local_reinject_queue.put(exchange)
+            local_reinject_counter += 1
         else:
             # The request has been accepted, increment the counters now
             incr_counters(hashes)
@@ -302,6 +317,14 @@ def write_stats():
         running_bus_reinject_handler_number
     stats["running_request_redis_handler_number"] = \
         running_request_redis_handler_number
+    stats['local_reinject_counter'] = local_reinject_counter
+    stats['bus_reinject_counter'] = bus_reinject_counter
+    stats['total_request_counter'] = total_request_counter
+    stats['expired_request_counter'] = expired_request_counter
+    stats['counters'] = {}
+    for name, limit in six.iteritems(Limits.limits):
+        stats['counters'][name + "_value"] = get_counter(name)
+        stats['counters'][name + "_limit"] = limit.limit
     with open(options.stats_file, "w") as f:
         f.write(json.dumps(stats, indent=4))
 
