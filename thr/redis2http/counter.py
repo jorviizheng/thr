@@ -30,6 +30,9 @@ def decr_counters(counter_list):
     global counters
     for counter in counter_list:
         counters[counter] -= 1
+        if counters[counter] == 0:
+            # to avoir some memory leaks
+            del(counters[counter])
 
 
 def del_counter(counter):
