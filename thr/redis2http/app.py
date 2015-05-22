@@ -63,11 +63,9 @@ bus_reinject_counter = 0
 stopping = 0
 
 reinject_event = toro.Event()
-local_reinject_queue = toro.Queue()
+local_reinject_queue = toro.PriorityQueue()
 bus_reinject_queues = {}
 running_exchanges = {}
-
-toro.Queue()
 
 logger = logging.getLogger("thr.redis2http")
 
@@ -80,7 +78,7 @@ def get_bus_reinject_queue(host, port):
     global bus_reinject_queues
     key = "%s:%i" % (host, port)
     if key not in bus_reinject_queues:
-        bus_reinject_queues[key] = toro.Queue()
+        bus_reinject_queues[key] = toro.PriorityQueue()
     return bus_reinject_queues[key]
 
 
@@ -205,19 +203,21 @@ def local_reinject_handler(single_iteration=False):
             pass
         while True:
             try:
-                exchange = local_reinject_queue.get_nowait()
+                priority, exchange = local_reinject_queue.get_nowait()
                 rid = exchange.request_id
                 if stopping >= 3:
                     logger.debug("stopping => reinject #%s on bus", rid)
                     host, port = exchange.queue.host, exchange.queue.port
-                    get_bus_reinject_queue(host, port).put_nowait(exchange)
+                    get_bus_reinject_queue(host, port).put_nowait((priority,
+                                                                   exchange))
                     continue
                 if exchange.lifetime_in_local_queue_ms() > mlqlms:
                     logger.debug("request #%s reached max lifetime on local "
                                  "queue: %i ms => scheduling reinject on bus",
                                  rid, exchange.lifetime_in_local_queue_ms)
                     host, port = exchange.queue.host, exchange.queue.port
-                    get_bus_reinject_queue(host, port).put_nowait(exchange)
+                    get_bus_reinject_queue(host, port).put_nowait((priority,
+                                                                   exchange))
                     continue
                 try:
                     get_request_queue().put_nowait((exchange.priority,
@@ -227,7 +227,8 @@ def local_reinject_handler(single_iteration=False):
                     logger.debug("can't reinject request #%s on local queue "
                                  "(full) => scheduling reinject on bus", rid)
                     host, port = exchange.queue.host, exchange.queue.port
-                    get_bus_reinject_queue(host, port).put_nowait(exchange)
+                    get_bus_reinject_queue(host, port).put_nowait((priority,
+                                                                   exchange))
             except _queue.Empty:
                 reinject_event.clear()
                 break
@@ -246,7 +247,7 @@ def bus_reinject_handler(host, port, single_iteration=False):
         if stopping >= 4 and queue.qsize() == 0:
             break
         try:
-            exchange = yield queue.get(deadline=deadline)
+            priority, exchange = yield queue.get(deadline=deadline)
         except toro.Timeout:
             continue
         rid = exchange.request_id
@@ -259,7 +260,7 @@ def bus_reinject_handler(host, port, single_iteration=False):
                            "=> sleeping 5s and re-queueing the request",
                            rid, host, port, exchange.queue.queue)
             yield tornado.gen.sleep(5)
-            queue.put_nowait(exchange)
+            queue.put_nowait((priority, exchange))
         else:
             bus_reinject_counter += 1
         if single_iteration:
@@ -286,7 +287,7 @@ def local_queue_handler(single_iteration=False):
             continue
         hashes = Limits.check(exchange.request)
         if hashes is None:
-            local_reinject_queue.put(exchange)
+            local_reinject_queue.put((priority, exchange))
             local_reinject_counter += 1
         else:
             # The request has been accepted, increment the counters now
