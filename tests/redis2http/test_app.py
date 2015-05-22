@@ -188,7 +188,7 @@ class TestRedis2HttpApp(AsyncTestCase):
                                    dict_to_inject={"response_key": "test_key"})
         exchange = HTTPRequestExchange(serialized_message,
                                        Queue('127.0.0.1', 6379, 'test_queue'))
-        local_reinject_queue.put(exchange)
+        local_reinject_queue.put((5, exchange))
         yield local_reinject_handler(True)
         self.assertEquals(get_request_queue().qsize(), 1)
         get_request_queue().get_nowait()
