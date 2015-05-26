@@ -14,10 +14,12 @@ class HTTPRequestExchange(object):
         self.serialized_request = request
         self.queue = queue
         self.local_queue_time = time.time()
+        self.conditions = None
         self.__request = None
         self.__body_link = None
         self.__extra_dict = None
         self.__request_id = None
+        self.__priority = None
 
     def unserialize_request(self):
         force_host = "%s:%i" % (self.queue.http_host, self.queue.http_port)
@@ -45,11 +47,13 @@ class HTTPRequestExchange(object):
 
     @property
     def priority(self):
-        if not self.__request:
-            self.unserialize_request()
-        big = self.__extra_dict.get('priority', 5)
-        little = int(time.time() * 1000)
-        return big * 10000000000000 - little
+        if not self.__priority:
+            if not self.__request:
+                self.unserialize_request()
+            big = self.__extra_dict.get('priority', 5)
+            little = int(time.time() * 1000)
+            self.__priority = big * 10000000000000 - little
+        return self.__priority
 
     @property
     def request_id(self):
