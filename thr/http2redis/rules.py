@@ -5,6 +5,7 @@
 # See the LICENSE file for more information.
 
 from tornado import gen
+from tornado import concurrent
 from thr.http2redis.exchange import HTTPExchange
 from thr.utils import glob, regexp
 
@@ -63,18 +64,39 @@ class Criteria(object):
         Returns:
             bool
         """
-        futures = [
-            gen.maybe_future(self.check_exchange_attribute(exchange, attrname))
-            for attrname in self.criterion_names
-        ]
+        def check_maybe_future(maybe):
+            if isinstance(maybe, concurrent.Future):
+                if maybe.done():
+                    if maybe.result():
+                        return True
+                else:
+                    return None
+            else:
+                if maybe:
+                    return True
+            return False
+        futures = []
+        for attrname in self.criterion_names:
+            tmp = self.check_exchange_attribute(exchange, attrname)
+            tmpres = check_maybe_future(tmp)
+            if tmpres is None:
+                futures.append(tmp)
+            elif tmpres is False:
+                raise gen.Return(False)
         if 'custom' in self.criteria:
             callback = self.criteria['custom']
             if not callable(callback):
                 raise Exception("custom criteria must be callable")
-            future = gen.maybe_future(callback(exchange))
-            futures.append(future)
-        result = yield futures
-        raise gen.Return(all(result))
+            tmp = callback(exchange)
+            tmpres = check_maybe_future(tmp)
+            if tmpres is None:
+                futures.append(tmp)
+            elif tmpres is False:
+                raise gen.Return(False)
+        if len(futures):
+            results = yield futures
+            raise gen.Return(all(results))
+        raise gen.Return(True)
 
 
 class Actions(object):
@@ -138,6 +160,7 @@ class Actions(object):
         if mode not in ("input", "output"):
             raise Exception("mode must be input or output")
         futures = {}
+        result_dict = {}
         for action_name in self.action_names_by_mode(mode):
             action = self.actions.get(action_name)
             if not action:
@@ -145,14 +168,22 @@ class Actions(object):
             if action:
                 if callable(action):
                     value = action(exchange)
+                    if isinstance(value, concurrent.Future):
+                        if value.done():
+                            result_dict[action_name] = value.result()
+                        else:
+                            futures[action_name] = value
+                    else:
+                        result_dict[action_name] = value
                 else:
                     if self.is_custom_action_name(action_name):
                         raise Exception("custom_ actions must be callable")
-                    value = action
-                future = gen.maybe_future(value)
-                futures[action_name] = future
+                    result_dict[action_name] = action
 
-        result_dict = yield futures
+        if len(futures) > 0:
+            futures_result_dict = yield futures
+            for key, value in futures_result_dict.items():
+                result_dict[key] = value
 
         for action_name in self.action_names_by_mode(mode):
             action = self.actions.get(action_name)
