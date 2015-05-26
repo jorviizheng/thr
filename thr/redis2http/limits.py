@@ -7,7 +7,6 @@
 
 import six
 from thr.utils import glob, regexp, diff
-from thr.redis2http.counter import get_counter
 import logging
 
 logger = logging.getLogger("thr.redis2http.limits")
@@ -26,8 +25,8 @@ class Limits(object):
         cls.limits[name] = limit
 
     @classmethod
-    def check(cls, message):
-        hashes = []
+    def conditions(cls, message):
+        conditions = []
         computed_hashes = {}
         for name, limit in six.iteritems(cls.limits):
             hash_func = limit.hash_func
@@ -37,16 +36,8 @@ class Limits(object):
             if hash is not None:
                 if limit.check_hash(hash):
                     counter = "%s%s" % (name, limit.counter_suffix(hash))
-                    current_counter = get_counter(counter)
-                    if not limit.check_limit(current_counter):
-                        logger.debug("Request refused, reason : %s failed "
-                                     "to pass (%s > %s)", counter,
-                                     current_counter, limit.limit)
-                        return None
-                    hashes.append(counter)
-        logger.debug("Request accepted, updating the "
-                     "following counters : %s", str(hashes))
-        return hashes
+                    conditions.append((counter, limit.limit))
+        return conditions
 
 
 class Limit(object):

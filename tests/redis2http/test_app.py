@@ -12,8 +12,7 @@ from six import BytesIO
 
 from thr.redis2http.app import request_redis_handler, get_request_queue
 from thr.redis2http.app import local_queue_handler
-from thr.redis2http.app import process_request, local_reinject_queue
-from thr.redis2http.app import local_reinject_handler
+from thr.redis2http.app import process_request
 from thr.redis2http.limits import Limits, add_max_limit
 from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queue
@@ -66,7 +65,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         self.assertEqual(res.serialized_request, serialized_message)
 
         yield client.call('DEL', 'test_queue')
-        yield client.disconnect()
+        client.disconnect()
 
     @gen_test
     def test_process_request(self):
@@ -95,7 +94,7 @@ class TestRedis2HttpApp(AsyncTestCase):
             unserialize_response_message(res[1])
         self.assertEquals(status_code, 200)
         self.assertEquals(body, b"bar")
-        yield client.disconnect()
+        client.disconnect()
 
     @gen_test
     def test_local_queue_handler_handler(self):
@@ -124,7 +123,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        yield client.disconnect()
+        client.disconnect()
 
         (status_code, body, _, headers, _) = \
             unserialize_response_message(serialized_response)
@@ -162,7 +161,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         client = tornadis.Client()
         yield client.connect()
         _, serialized_response = yield client.call('BRPOP', 'test_key', 0)
-        yield client.disconnect()
+        client.disconnect()
 
         foo_counter = get_counter('uuid_*/foo')
         del_counter('uuid_*/foo')
@@ -174,22 +173,3 @@ class TestRedis2HttpApp(AsyncTestCase):
         self.assertEqual(body, b"bar")
         self.assertEqual(len(headers), 0)
         fetch_mock = fetch_patcher.stop()
-
-    @gen_test
-    def test_local_reinject_handler(self):
-        Limits.reset()
-        add_max_limit("foo", lambda r: r.url, glob("*/foo"), 3)
-
-        set_counter('uuid_*/foo', 3)
-
-        request = tornado.httputil.HTTPServerRequest("GET", "/foo")
-        serialized_message = \
-            serialize_http_request(request,
-                                   dict_to_inject={"response_key": "test_key"})
-        exchange = HTTPRequestExchange(serialized_message,
-                                       Queue('127.0.0.1', 6379, 'test_queue'))
-        local_reinject_queue.put((5, exchange))
-        yield local_reinject_handler(True)
-        self.assertEquals(get_request_queue().qsize(), 1)
-        get_request_queue().get_nowait()
-        del_counter('uuid_*/foo')

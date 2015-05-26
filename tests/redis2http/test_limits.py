@@ -12,6 +12,7 @@ from six import assertCountEqual
 from thr.redis2http.limits import Limits, Limit
 from thr.redis2http.limits import add_max_limit
 from thr.redis2http.counter import set_counter, del_counter
+from thr.redis2http.counter import conditional_incr_counters
 from thr.utils import glob, regexp, diff
 
 
@@ -53,13 +54,17 @@ class TestLimits(TestCase):
         set_counter('foo', 3)
 
         message = HTTPServerRequest("GET", "/foo")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, ["foo"])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertEqual(counters, ["foo"])
+        set_counter('foo', 3)
 
         set_counter('get', 2)
         message = HTTPServerRequest("POST", "/foo")
-        hashes = Limits.check(message)
-        self.assertFalse(hashes)
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertFalse(flag)
 
         del_counter('foo')
         del_counter('get')
@@ -71,18 +76,26 @@ class TestLimits(TestCase):
 
         set_counter('foo', 3)
         message = HTTPServerRequest("GET", "/foo")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, ["foo"])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertEqual(counters, ["foo"])
+        set_counter('foo', 3)
 
         set_counter('post', 1)
         message = HTTPServerRequest("POST", "/foo")
-        hashes = Limits.check(message)
-        assertCountEqual(self, hashes, ["foo", "post"])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        assertCountEqual(self, counters, ["foo", "post"])
+        set_counter('foo', 3)
+        set_counter('post', 1)
 
         set_counter('bar', 4)
         message = HTTPServerRequest("GET", "/bar")
-        hashes = Limits.check(message)
-        self.assertFalse(hashes)
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertFalse(flag)
 
         del_counter('foo')
         del_counter('post')
@@ -93,35 +106,44 @@ class TestLimits(TestCase):
 
         set_counter('foo', 3)
         message = HTTPServerRequest("GET", "/foo")
-        hashes = Limits.check(message)
-        self.assertFalse(hashes)
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertFalse(flag)
 
         set_counter('foo', 0)
         message = HTTPServerRequest("GET", "/bar")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, [])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertTrue(len(counters) == 0)
 
         message = HTTPServerRequest("GET", "/foobar")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, ["foo"])
-
-        del_counter('uuid_/foo*')
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertEqual(counters, ["foo"])
 
     def test_regexp_limit(self):
         add_max_limit("regexp", method_hash_func, regexp("[A-Z]{4}"), 3)
 
         set_counter('regexp', 2)
         message = HTTPServerRequest("GET", "/foo")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, [])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertTrue(len(counters) == 0)
 
         message = HTTPServerRequest("HEAD", "/foo")
-        hashes = Limits.check(message)
-        self.assertEqual(hashes, ["regexp"])
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertTrue(flag)
+        self.assertEqual(counters, ["regexp"])
 
         set_counter('regexp', 5)
         message = HTTPServerRequest("POST", "/foo")
-        hashes = Limits.check(message)
-        self.assertFalse(hashes)
+        conditions = Limits.conditions(message)
+        flag, counters = conditional_incr_counters(conditions)
+        self.assertFalse(flag)
+        self.assertEqual(counters, ['regexp'])
 
         del_counter('regexp')
