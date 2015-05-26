@@ -69,22 +69,12 @@ bus_reinject_queues = {}
 running_exchanges = {}
 blocked_exchanges = {}
 blocked_queues = {}
-bus_events = {}
 
 logger = logging.getLogger("thr.redis2http")
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
                                              max_clients=100000)
-
-
-def get_bus_event(host, port, queue):
-    global bus_events
-    key = "redis://%s:%i:/%s" % (host, port, queue)
-    if key not in bus_events:
-        bus_events[key] = toro.Event()
-        bus_events[key].set()
-    return bus_events[key]
 
 
 def blocked_queue_put_nowait(counter_name, priority, exchange):
@@ -143,13 +133,7 @@ def get_redis_client(host, port):
 def request_redis_handler(queue, single_iteration=False):
     global expired_request_counter
     redis = get_redis_client(queue.host, queue.port)
-    event = get_bus_event(queue.host, queue.port, queue.queue)
-    deadline = timedelta(seconds=1)
     while stopping < 1:
-        try:
-            yield event.wait(deadline=deadline)
-        except toro.Timeout:
-            continue
         tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
         if isinstance(tmp, tornadis.ConnectionError):
             logger.warning("connection error while brpoping queue "
@@ -230,8 +214,6 @@ def process_request(exchange, counters):
     del(running_exchanges[rid])
     decr_counters(counters)
     total_request_counter += 1
-    event = get_bus_event(queue.host, queue.port, queue.queue)
-    event.set()
     for counter in counters:
         reinject_blocking_queue(counter)
 
@@ -289,9 +271,6 @@ def bus_reinject_handler(host, port, single_iteration=False):
             yield tornado.gen.sleep(5)
             queue.put_nowait((priority, exchange))
         else:
-            event = get_bus_event(exchange.queue.host, exchange.queue.port,
-                                  exchange.queue.queue)
-            event.clear()
             bus_reinject_counter += 1
         if single_iteration:
             break
