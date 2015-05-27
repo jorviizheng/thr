@@ -201,4 +201,5 @@ def main():
     server = httpserver.HTTPServer(app)
     server.listen(options.port)
     signal.signal(signal.SIGTERM, functools.partial(sig_handler, server))
+    ioloop.IOLoop.instance().set_blocking_log_threshold(1)
     ioloop.IOLoop.instance().start()

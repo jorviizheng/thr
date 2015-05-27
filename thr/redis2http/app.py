@@ -161,6 +161,7 @@ def request_redis_handler(queue, single_iteration=False):
             yield rq.put((priority, exchange))
         if single_iteration:
             break
+        yield tornado.gen.moment
     logger.info("request_redis_handler redis://%s:%i/%s stopped", queue.host,
                 queue.port, queue.queue)
 
@@ -466,6 +467,7 @@ def main():
     if options.config is not None:
         exec(open(options.config).read(), {})
     loop = tornado.ioloop.IOLoop.instance()
+    loop.set_blocking_log_threshold(1)
     launched_bus_reinject_handlers = {}
     for queue in Queues:
         host = queue.host
