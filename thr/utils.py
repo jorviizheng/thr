@@ -257,6 +257,11 @@ def unserialize_request_message(message, force_host=None):
             else:
                 tmp = decoded['body']
             kwargs['body'] = base64.standard_b64decode(tmp)
+        else:
+            if decoded['method'] in ('POST', 'PUT', 'PATCH'):
+                # we set an empty body because of #599 errors
+                # with tornado http client else
+                kwargs['body'] = b''
     request = HTTPRequest(url, method=decoded['method'], **kwargs)
     if 'extra' in decoded:
         extra_dict = decoded['extra']
