@@ -28,6 +28,7 @@ from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS
 from thr import DEFAULT_BLOCKED_QUEUE_MAX_SIZE
+from thr import REDIS_POOL_CLIENT_TIMEOUT
 
 try:
     define("config", help="Path to config file")
@@ -120,7 +121,8 @@ def get_redis_pool(host, port):
     if key not in redis_pools:
         redis_pools[key] = \
             tornadis.ClientPool(host=host, port=port,
-                                connect_timeout=options.timeout)
+                                connect_timeout=options.timeout,
+                                client_timeout=REDIS_POOL_CLIENT_TIMEOUT)
     return redis_pools[key]
 
 
@@ -133,37 +135,38 @@ def get_redis_client(host, port):
 def request_redis_handler(queue, single_iteration=False):
     global expired_request_counter
     redis = get_redis_client(queue.host, queue.port)
+    brpop_args = queue.queues + [BRPOP_TIMEOUT]
     while stopping < 1:
-        tmp = yield redis.call('BRPOP', queue.queue, BRPOP_TIMEOUT)
+        tmp = yield redis.call('BRPOP', *brpop_args)
         if isinstance(tmp, tornadis.ConnectionError):
-            logger.warning("connection error while brpoping queue "
+            logger.warning("connection error while brpoping queues "
                            "redis://%s:%i/%s => sleeping 5s and retrying",
-                           queue.host, queue.port, queue.queue)
+                           queue.host, queue.port, ",".join(queue.queues))
             yield tornado.gen.sleep(5)
             continue
         if tmp:
-            _, request = tmp
+            redis_queue, request = tmp
             rq = get_request_queue()
-            exchange = HTTPRequestExchange(request, queue)
+            exchange = HTTPRequestExchange(request, queue, redis_queue)
             lifetime = exchange.lifetime()
             rid = exchange.request_id
             if lifetime > options.max_lifetime:
                 logger.warning("expired request #%s (lifetime: %i) got from "
                                "queue redis://%s:%i/%s => trash it", rid,
-                               lifetime, queue.host, queue.port, queue.queue)
+                               lifetime, queue.host, queue.port, redis_queue)
                 expired_request_counter += 1
                 continue
             priority = exchange.priority
             logger.debug("Got request #%s (lifetime: %i) got from "
                          "queue redis://%s:%i/%s => local queue it "
                          "with priority: %i", rid, lifetime, queue.host,
-                         queue.port, queue.queue, priority)
+                         queue.port, redis_queue, priority)
             yield rq.put((priority, exchange))
         if single_iteration:
             break
         yield tornado.gen.moment
     logger.info("request_redis_handler redis://%s:%i/%s stopped", queue.host,
-                queue.port, queue.queue)
+                queue.port, ",".join(queue.queues))
 
 
 @tornado.gen.coroutine
@@ -257,18 +260,19 @@ def bus_reinject_handler(host, port, single_iteration=False):
             continue
         rid = exchange.request_id
         logger.debug("reinject request #%s on redis://%s:%i/%s", rid, host,
-                     port, exchange.queue.queue)
-        result = yield redis.call('LPUSH', exchange.queue.queue,
+                     port, exchange.redis_queue)
+        result = yield redis.call('LPUSH', exchange.redis_queue,
                                   exchange.serialized_request)
         if not isinstance(result, six.integer_types):
             if stopping >= 5:
                 logger.warning("can't reinject request #%s on "
                                "redis://%s:%i/%s but we are stopping "
-                               "=> loosing requests")
+                               "=> loosing requests",
+                               rid, host, port, exchange.redis_queue)
                 break
             logger.warning("can't reinject request #%s on redis://%s:%i/%s "
                            "=> sleeping 5s and re-queueing the request",
-                           rid, host, port, exchange.queue.queue)
+                           rid, host, port, exchange.redis_queue)
             yield tornado.gen.sleep(5)
             queue.put_nowait((priority, exchange))
         else:
