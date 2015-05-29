@@ -20,7 +20,7 @@ from thr.http2redis.exchange import HTTPExchange
 from thr.utils import make_unique_id, serialize_http_request, \
     unserialize_response_message
 from thr import DEFAULT_REDIS_HOST, DEFAULT_REDIS_PORT, DEFAULT_REDIS_QUEUE
-from thr import DEFAULT_TIMEOUT
+from thr import DEFAULT_TIMEOUT, REDIS_POOL_CLIENT_TIMEOUT
 
 
 define("timeout", type=int, help="Timeout in second for a request",
@@ -42,8 +42,10 @@ def get_redis_pool(host, port):
     global redis_pools
     key = "%s:%i" % (host, port)
     if key not in redis_pools:
-        redis_pools[key] = tornadis.ClientPool(host=host, port=port,
-                                               connect_timeout=options.timeout)
+        kwargs = {"host": host, "port": port, "autoclose": True,
+                  "connect_timeout": options.timeout,
+                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
+        redis_pools[key] = tornadis.ClientPool(**kwargs)
     return redis_pools[key]
 
 
