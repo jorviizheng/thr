@@ -10,9 +10,13 @@ import time
 
 class HTTPRequestExchange(object):
 
-    def __init__(self, request, queue):
+    def __init__(self, request, queue, redis_queue=None):
         self.serialized_request = request
         self.queue = queue
+        if redis_queue is None:
+            self.redis_queue = queue.queues[0]
+        else:
+            self.redis_queue = redis_queue
         self.local_queue_time = time.time()
         self.conditions = None
         self.__request = None
@@ -20,6 +24,7 @@ class HTTPRequestExchange(object):
         self.__extra_dict = None
         self.__request_id = None
         self.__priority = None
+        self.creation_time = time.time()
 
     def unserialize_request(self):
         force_host = "%s:%i" % (self.queue.http_host, self.queue.http_port)
@@ -51,8 +56,8 @@ class HTTPRequestExchange(object):
             if not self.__request:
                 self.unserialize_request()
             big = self.__extra_dict.get('priority', 5)
-            little = int(time.time() * 1000)
-            self.__priority = big * 10000000000000 - little
+            little = int(self.creation_time * 1000)
+            self.__priority = big * 10000000000000 + little
         return self.__priority
 
     @property
