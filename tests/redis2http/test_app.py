@@ -48,7 +48,7 @@ class TestRedis2HttpApp(AsyncTestCase):
     @gen_test
     def test_request_handler(self):
         self.io_loop.add_future(request_redis_handler(Queue('127.0.0.1', 6379,
-                                                            'test_queue'),
+                                                            ['test_queue']),
                                                       True), raise_exception)
 
         self.assertEqual(get_request_queue().qsize(), 0)
@@ -61,7 +61,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         yield client.call('LPUSH', 'test_queue', serialized_message)
 
         priority, res = yield get_request_queue().get()
-        self.assertEqual(res.queue.queue, u'test_queue')
+        self.assertEqual(res.queue.queues[0], u'test_queue')
+        self.assertEqual(res.redis_queue, u'test_queue')
         self.assertEqual(res.serialized_request, serialized_message)
 
         yield client.call('DEL', 'test_queue')
@@ -83,7 +84,7 @@ class TestRedis2HttpApp(AsyncTestCase):
         req = tornado.httputil.HTTPServerRequest("GET", "/foo")
         msg = serialize_http_request(req, dict_to_inject=dct)
         exchange = HTTPRequestExchange(msg,
-                                       Queue("localhost", 6379, "foo"))
+                                       Queue("localhost", 6379, ["foo"]))
         yield process_request(exchange, [])
         fetch_patcher.stop()
         client = tornadis.Client()
@@ -115,7 +116,8 @@ class TestRedis2HttpApp(AsyncTestCase):
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
         exchange = HTTPRequestExchange(serialized_message,
-                                       Queue('127.0.0.1', 6379, 'test_queue'))
+                                       Queue('127.0.0.1', 6379,
+                                             ['test_queue']))
 
         yield get_request_queue().put((5, exchange))
         self.io_loop.add_future(local_queue_handler(True), raise_exception)
@@ -154,7 +156,8 @@ class TestRedis2HttpApp(AsyncTestCase):
             serialize_http_request(request,
                                    dict_to_inject={"response_key": "test_key"})
         exchange = HTTPRequestExchange(serialized_message,
-                                       Queue('127.0.0.1', 6379, 'test_queue'))
+                                       Queue('127.0.0.1', 6379,
+                                             ['test_queue']))
         yield get_request_queue().put((5, exchange))
         self.io_loop.add_future(local_queue_handler(True), raise_exception)
 
