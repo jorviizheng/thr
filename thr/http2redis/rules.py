@@ -124,6 +124,13 @@ class Actions(object):
         ]
         self.action_names.append("custom_input")
         self.action_names.append("custom_output")
+        self.output_action_names = []
+        self.input_action_names = []
+        for action_name in self.action_names:
+            if self.is_output_action_name(action_name):
+                self.output_action_names.append(action_name)
+            else:
+                self.input_action_names.append(action_name)
 
     def execute_output_actions(self, exchange):
         return self._execute(exchange, "output")
@@ -136,15 +143,6 @@ class Actions(object):
 
     def is_custom_action_name(self, action_name):
         return action_name.startswith('custom_')
-
-    def action_names_by_mode(self, mode):
-        if mode == 'output':
-            return [x for x in self.action_names
-                    if self.is_output_action_name(x)]
-        if mode == 'input':
-            return [x for x in self.action_names
-                    if not self.is_output_action_name(x)]
-        raise Exception("bad mode value: %s" % mode)
 
     @gen.coroutine
     def _execute(self, exchange, mode):
@@ -161,7 +159,11 @@ class Actions(object):
             raise Exception("mode must be input or output")
         futures = {}
         result_dict = {}
-        for action_name in self.action_names_by_mode(mode):
+        if mode == 'output':
+            action_names = self.output_action_names
+        else:
+            action_names = self.input_action_names
+        for action_name in action_names:
             action = self.actions.get(action_name)
             if not action:
                 continue
@@ -185,7 +187,7 @@ class Actions(object):
             for key, value in futures_result_dict.items():
                 result_dict[key] = value
 
-        for action_name in self.action_names_by_mode(mode):
+        for action_name in action_names:
             action = self.actions.get(action_name)
             if action is None:
                 continue
