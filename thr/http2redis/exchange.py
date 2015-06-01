@@ -35,7 +35,7 @@ class HTTPExchange(object):
         keyvalues: a dict key=>value to store custom key/values (helper for
             config file).
         request_id: a unique id for the request
-        priority: a value between 1 (high) and 9 (low) which will be the
+        priority: a value between 1 (high) and 99 (low) which will be the
             queue priority at redis2http side.
     """
 
@@ -50,7 +50,7 @@ class HTTPExchange(object):
         self.keyvalues = {}
         self.output_default_body = None
         self.request_id = make_unique_id()
-        self.priority = 5
+        self.priority = 50
 
     def set_custom_value(self, key, value):
         self.keyvalues[key] = value
