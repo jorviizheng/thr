@@ -6,6 +6,7 @@
 
 import tornado
 import time
+import functools
 import json
 from six.moves import queue as _queue
 from tornado.options import define, options, parse_command_line
@@ -24,7 +25,7 @@ from thr.redis2http.counter import decr_counters
 from thr.redis2http.counter import get_counter, get_counter_blocks
 from thr.redis2http.counter import conditional_incr_counters
 from thr.utils import serialize_http_response, timedelta_total_ms
-from thr import DEFAULT_TIMEOUT, DEFAULT_LOCAL_QUEUE_MAX_SIZE
+from thr import DEFAULT_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS
 from thr import DEFAULT_BLOCKED_QUEUE_MAX_SIZE
@@ -37,8 +38,6 @@ try:
 except:
     # already defined (probably because we are launching unit tests)
     pass
-define("local_queue_max_size", help="Local queue (in process) max size",
-       type=int, default=DEFAULT_LOCAL_QUEUE_MAX_SIZE)
 define("max_lifetime", help="Maximum lifetime (in second) for a request on "
        "buses/queues", type=int, default=DEFAULT_MAXIMUM_LIFETIME)
 define("blocked_queue_max_size", help="Blocked queue (in process) max size",
@@ -52,7 +51,6 @@ define("stats_frequency_ms", type=int, help="Stats file write frequency "
        "(in ms) (0 => no stats write)", default=2000)
 
 redis_pools = {}
-request_queue = None
 running_request_redis_handler_number = 0
 running_bus_reinject_handler_number = 0
 total_request_counter = 0
@@ -61,9 +59,9 @@ bus_reinject_counter = 0
 
 # stopping mode
 # (0 => not stopping, 1 => stopping request_redis_handler,
-#  2 => stopping local_queue_handler, 3 => stopping expiration_handler
-#  4 => finishing running exchanges, 5 = stopping bus_reinject_handlers
-#  6 => stopped)
+#  2 => stopping expiration_handler
+#  3 => finishing running exchanges, 4 = stopping bus_reinject_handlers
+#  5 => stopped)
 stopping = 0
 
 bus_reinject_queues = {}
@@ -108,13 +106,6 @@ def get_bus_reinject_queue(host, port):
     return bus_reinject_queues[key]
 
 
-def get_request_queue():
-    global request_queue
-    if request_queue is None:
-        request_queue = toro.PriorityQueue(options.local_queue_max_size)
-    return request_queue
-
-
 def get_redis_pool(host, port):
     global redis_pools
     key = "%s:%i" % (host, port)
@@ -146,31 +137,16 @@ def request_redis_handler(queue, single_iteration=False):
             continue
         if tmp:
             redis_queue, request = tmp
-            rq = get_request_queue()
             exchange = HTTPRequestExchange(request, queue, redis_queue)
-            lifetime = exchange.lifetime()
-            rid = exchange.request_id
-            if lifetime > options.max_lifetime:
-                logger.warning("expired request #%s (lifetime: %i) got from "
-                               "queue redis://%s:%i/%s => trash it", rid,
-                               lifetime, queue.host, queue.port, redis_queue)
-                expired_request_counter += 1
-                continue
-            priority = exchange.priority
-            logger.debug("Got request #%s (lifetime: %i) got from "
-                         "queue redis://%s:%i/%s => local queue it "
-                         "with priority: %i", rid, lifetime, queue.host,
-                         queue.port, redis_queue, priority)
-            yield rq.put((priority, exchange))
+            launch_exchange_or_queue_it(exchange)
         if single_iteration:
             break
-        yield tornado.gen.moment
     logger.info("request_redis_handler redis://%s:%i/%s stopped", queue.host,
                 queue.port, ",".join(queue.queues))
 
 
 @tornado.gen.coroutine
-def process_request(exchange, counters):
+def process_request(exchange, before):
     global running_exchanges, total_request_counter
     async_client = tornado.httpclient.AsyncHTTPClient()
     request = exchange.request
@@ -183,8 +159,6 @@ def process_request(exchange, counters):
     rid = exchange.request_id
     logger.debug("Calling %s on %s (#%s)....", request.method, request.url,
                  rid)
-    before = datetime.now()
-    running_exchanges[rid] = (before, exchange)
     redirection = 0
     while redirection < 10:
         response = yield async_client.fetch(request, raise_error=False)
@@ -215,34 +189,39 @@ def process_request(exchange, counters):
                 not isinstance(redis_res[1], six.integer_types):
             logger.warning("can't send the result on redis://%s:%i for "
                            "request #%s", queue.host, queue.port, rid)
-    del(running_exchanges[rid])
-    decr_counters(counters)
-    total_request_counter += 1
-    for counter in counters:
-        reinject_blocking_queue(counter)
 
 
 def reinject_blocking_queue(counter):
+    choosen_counter = counter + "___reinject"
     while True:
-        tmp = None
         try:
             tmp = blocked_queue_get_nowait(counter)
         except _queue.Empty:
             break
         ex = tmp[1]
-        del(blocked_exchanges[ex.request_id])
+        res = launch_exchange_or_queue_it(ex, choosen_counter=choosen_counter)
+        if res is not None and res is not True:
+            # The request is not accepted because some counters are full
+            if counter in res:
+                # The current counter is full => stopping the reinject process
+                break
+    # Let's reinject jobs into the blocking queue (from the temporary queue)
+    while True:
         try:
-            if stopping >= 2:
-                host, port = ex.queue.host, ex.queue.port
-                get_bus_reinject_queue(host, port).put_nowait(tmp)
-            else:
-                get_request_queue().put_nowait(tmp)
-        except _queue.Full:
-            logger.debug("the local request queue is full, can't "
-                         "unblock request %s => reuploading on %s:%i",
-                         ex.request_id, ex.queue.host, ex.queue.port)
-            host, port = ex.queue.host, ex.queue.port
-            get_bus_reinject_queue(host, port).put_nowait(tmp)
+            tmp = blocked_queue_get_nowait(choosen_counter)
+        except _queue.Empty:
+            break
+        blocked_queue_put_nowait(counter, tmp[0], tmp[1])
+
+
+def queue_for_bus_reinject(host, port, priority, exchange,
+                           remove_from_blocked_exchange=True):
+    global blocked_exchanges
+    get_bus_reinject_queue(host, port).put_nowait((priority, exchange))
+    rid = exchange.request_id
+    if remove_from_blocked_exchange:
+        if rid in blocked_exchanges:
+            del(blocked_exchanges[rid])
 
 
 @tornado.gen.coroutine
@@ -252,7 +231,7 @@ def bus_reinject_handler(host, port, single_iteration=False):
     queue = get_bus_reinject_queue(host, port)
     deadline = timedelta(seconds=1)
     while True:
-        if stopping >= 5 and queue.qsize() == 0:
+        if stopping >= 4 and queue.qsize() == 0:
             break
         try:
             priority, exchange = yield queue.get(deadline=deadline)
@@ -264,7 +243,7 @@ def bus_reinject_handler(host, port, single_iteration=False):
         result = yield redis.call('LPUSH', exchange.redis_queue,
                                   exchange.serialized_request)
         if not isinstance(result, six.integer_types):
-            if stopping >= 5:
+            if stopping >= 4:
                 logger.warning("can't reinject request #%s on "
                                "redis://%s:%i/%s but we are stopping "
                                "=> loosing requests",
@@ -285,7 +264,9 @@ def bus_reinject_handler(host, port, single_iteration=False):
 @tornado.gen.coroutine
 def expiration_handler(single_iteration=False):
     global blocked_exchanges, expired_request_counter
-    while stopping < 3:
+    while stopping < 2:
+        yield tornado.gen.sleep(1)
+        continue
         to_trash = []
         queues_to_find = set()
         for rid, tmp in blocked_exchanges.items():
@@ -306,8 +287,8 @@ def expiration_handler(single_iteration=False):
                 logger.debug("request #%s spent %s ms in local queue "
                              " => reuploading it on redis://%s:%i", rid,
                              local_queue_ms, host, port)
-                get_bus_reinject_queue(host, port).put_nowait((priority,
-                                                               exchange))
+                queue_for_bus_reinject(host, port, priority, exchange,
+                                       remove_from_blocked_exchange=False)
                 to_trash.append(rid)
                 queues_to_find.add(counter)
         for counter in queues_to_find:
@@ -327,55 +308,57 @@ def expiration_handler(single_iteration=False):
     logger.info("expiration_handler stopped")
 
 
-@tornado.gen.coroutine
-def local_queue_handler(single_iteration=False):
-    global expired_request_counter, blocked_exchanges
-    deadline = timedelta(seconds=1)
-    request_queue = get_request_queue()
-    while True:
-        if stopping >= 2 and request_queue.qsize() == 0:
-            break
-        try:
-            priority, exchange = yield request_queue.get(deadline=deadline)
-        except toro.Timeout:
-            continue
-        rid = exchange.request_id
-        lifetime = exchange.lifetime()
-        if lifetime > options.max_lifetime:
-            logger.warning("expired request #%s (lifetime: %i) got from "
-                           "local queue => trash it", rid, lifetime)
-            expired_request_counter += 1
-            continue
-        if stopping >= 2:
-            host, port = exchange.queue.host, exchange.queue.port
-            get_bus_reinject_queue(host, port).put_nowait((priority, exchange))
-            continue
-        if exchange.conditions is None:
-            exchange.conditions = Limits.conditions(exchange.request)
-        accepted, counters = conditional_incr_counters(exchange.conditions)
-        if accepted is False:
+def launch_exchange_or_queue_it(exchange, choosen_counter=None):
+    global expired_request_counter, blocked_exchanges, running_exchanges
+    rid = exchange.request_id
+    lifetime = exchange.lifetime()
+    priority = exchange.priority
+    if lifetime > options.max_lifetime:
+        logger.warning("expired request #%s (lifetime: %i) got from "
+                       "local queue => trash it", rid, lifetime)
+        expired_request_counter += 1
+        return None
+    if stopping >= 2:
+        host, port = exchange.queue.host, exchange.queue.port
+        queue_for_bus_reinject(host, port, priority, exchange)
+        return None
+    if exchange.conditions is None:
+        exchange.conditions = Limits.conditions(exchange.request)
+    accepted, counters = conditional_incr_counters(exchange.conditions)
+    if accepted is False:
+        if choosen_counter is None:
             choosen_counter = min(counters, key=get_blocked_queue_size)
-            try:
-                blocked_queue_put_nowait(choosen_counter, priority, exchange)
-                logger.debug("request %s blocked by %s counter, queued in "
-                             "blocking queue", rid, choosen_counter)
+        try:
+            blocked_queue_put_nowait(choosen_counter, priority, exchange)
+            logger.debug("request %s blocked by %s counter, queued in "
+                         "blocking queue", rid, choosen_counter)
+            if rid not in blocked_exchanges:
                 blocked_exchanges[rid] = (choosen_counter, exchange)
-            except _queue.Full:
-                host, port = exchange.queue.host, exchange.queue.port
-                logger.debug("the blocking queue for counter %s is full => "
-                             "re reuploading request %s on redis://%s:%i",
-                             choosen_counter, rid, host, port)
-                get_bus_reinject_queue(host, port).put_nowait((priority,
-                                                               exchange))
-        else:
-            future = process_request(exchange, counters)
-            tornado.ioloop.IOLoop.instance().add_future(future, debug_future)
-        if single_iteration:
-            break
-    logger.info("local_queue_handler stopped")
+        except _queue.Full:
+            host, port = exchange.queue.host, exchange.queue.port
+            logger.debug("the blocking queue for counter %s is full => "
+                         "re reuploading request %s on redis://%s:%i",
+                         choosen_counter, rid, host, port)
+            queue_for_bus_reinject(host, port, priority, exchange)
+        return counters
+    else:
+        if rid in blocked_exchanges:
+            del(blocked_exchanges[rid])
+        before = datetime.now()
+        running_exchanges[rid] = (before, exchange)
+        future = process_request(exchange, before)
+        callback = functools.partial(process_request_callback, rid, counters)
+        tornado.ioloop.IOLoop.instance().add_future(future, callback)
+        return True
 
 
-def debug_future(future):
+def process_request_callback(rid, counters, future):
+    global running_exchanges, total_request_counter
+    del(running_exchanges[rid])
+    decr_counters(counters)
+    total_request_counter += 1
+    for counter in counters:
+        reinject_blocking_queue(counter)
     exception = future.exception()
     if exception is not None:
         logger.warning("exception: %s catched during process execution",
@@ -385,14 +368,13 @@ def debug_future(future):
 
 def write_stats():
     stats = {"epoch": time.time(), "stopping_mode": stopping}
-    stats["request_queue_size"] = get_request_queue().qsize()
     for key, queue in bus_reinject_queues.items():
         stats["bus_reinject_queue_%s_size" % key] = queue.qsize()
     running_requests = {}
     now = datetime.now()
     for key, tmp in running_exchanges.items():
         before, exchange = tmp
-        big_priority = exchange.priority / 10000000000000
+        big_priority = exchange.priority / 100000000000000
         running_requests[key] = {"method": exchange.request.method,
                                  "url": exchange.request.url,
                                  "since_ms": timedelta_total_ms(now - before),
@@ -434,17 +416,17 @@ def _stop_loop():
             running_request_redis_handler_number -= 1
             if running_request_redis_handler_number == 0:
                 stopping += 1
-        elif stopping == 3:
+        elif stopping == 2:
             stopping += 1
             tornado.ioloop.IOLoop.instance().call_later(0.01, _stop_loop)
-        elif stopping == 4:
+        elif stopping == 3:
             if len(running_exchanges) == 0:
                 stopping += 1
             else:
                 logger.info("waiting for %i request(s) to finish...",
                             len(running_exchanges))
                 tornado.ioloop.IOLoop.instance().call_later(1, _stop_loop)
-        elif stopping == 5:
+        elif stopping == 4:
             running_bus_reinject_handler_number -= 1
             if running_bus_reinject_handler_number == 0:
                 stopping += 1
@@ -484,7 +466,6 @@ def main():
             loop.add_future(bus_reinject_handler(host, port), stop_loop)
             launched_bus_reinject_handlers["%s:%i" % (host, port)] = True
             running_bus_reinject_handler_number += 1
-    loop.add_future(local_queue_handler(), stop_loop)
     loop.add_future(expiration_handler(), stop_loop)
     if options.stats_frequency_ms > 0:
         stats_pc = tornado.ioloop.PeriodicCallback(write_stats,
