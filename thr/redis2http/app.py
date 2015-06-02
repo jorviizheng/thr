@@ -269,8 +269,6 @@ def bus_reinject_handler(host, port, single_iteration=False):
 def expiration_handler(single_iteration=False):
     global blocked_exchanges, expired_request_counter
     while stopping < 2:
-        yield tornado.gen.sleep(1)
-        continue
         to_trash = []
         queues_to_find = set()
         for rid, tmp in blocked_exchanges.items():
