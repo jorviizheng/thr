@@ -23,6 +23,7 @@ from thr.redis2http.exchange import HTTPRequestExchange
 from thr.redis2http.queue import Queues
 from thr.redis2http.counter import decr_counters
 from thr.redis2http.counter import get_counter, get_counter_blocks
+from thr.redis2http.counter import get_global_counter_name
 from thr.redis2http.counter import conditional_incr_counters
 from thr.utils import serialize_http_response, timedelta_total_ms
 from thr import DEFAULT_TIMEOUT
@@ -395,9 +396,18 @@ def write_stats():
     for name, limit in six.iteritems(Limits.limits):
         if limit.show_in_stats:
             stats['counters'][name + "_limit"] = limit.limit
-            stats['counters'][name + "_value"] = get_counter(name)
-            stats['counters'][name + "_blocks"] = get_counter_blocks(name)
-            stats['counters'][name + "_queue"] = get_blocked_queue_size(name)
+            if limit.counter_suffix("foo") == "":
+                stats['counters'][name + "_value"] = get_counter(name)
+                stats['counters'][name + "_blocks"] = get_counter_blocks(name)
+                stats['counters'][name + "_queue"] = \
+                    get_blocked_queue_size(name)
+            else:
+                global_name = get_global_counter_name(name)
+                stats['counters'][name + "_globalvalue"] = \
+                    get_counter(global_name)
+                stats['counters'][name + "_globalblocks"] = \
+                    get_counter_blocks(global_name)
+
     with open(options.stats_file, "w") as f:
         f.write(json.dumps(stats, indent=4))
 

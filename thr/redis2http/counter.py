@@ -11,6 +11,10 @@ counters = defaultdict(int)
 counters_blocks = defaultdict(int)
 
 
+def get_global_counter_name(counter):
+    return counter.split('==', 1)[0] + "=====global"
+
+
 def get_counter(counter):
     return counters[counter]
 
@@ -24,6 +28,9 @@ def incr_counters(counter_list):
     global counters
     for counter in counter_list:
         counters[counter] += 1
+        if '==' in counter:
+            global_counter = get_global_counter_name(counter)
+            counters[global_counter] += 1
 
 
 def get_counter_blocks(counter):
@@ -37,6 +44,9 @@ def conditional_incr_counters(conditions):
         if limit <= counters[counter_name]:
             blocked_counters.append(counter_name)
             counters_blocks[counter_name] += 1
+            if '==' in counter_name:
+                global_counter = get_global_counter_name(counter_name)
+                counters_blocks[global_counter] += 1
     if len(blocked_counters) == 0:
         tmp = [x[0] for x in conditions]
         incr_counters(tmp)
@@ -52,6 +62,9 @@ def decr_counters(counter_list):
         if counters[counter] == 0:
             # to avoir some memory leaks
             del(counters[counter])
+        if '==' in counter:
+            global_counter = get_global_counter_name(counter)
+            counters[global_counter] -= 1
 
 
 def del_counter(counter):

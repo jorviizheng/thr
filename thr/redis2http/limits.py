@@ -53,11 +53,13 @@ class Limit(object):
 
     def counter_suffix(self, hashed_message):
         if self.hash_value == self.hash_func:
-            return "=%s" % hashed_message
+            return "==%s" % hashed_message
         else:
             return ""
 
     def check_hash(self, hashed_message):
+        if '==' in hashed_message:
+            raise Exception("'==' not allowed in hashed_message")
         if self.hash_func == self.hash_value:
             return True
         if isinstance(self.hash_value, (glob, regexp, diff)):
@@ -88,6 +90,6 @@ def add_max_limit(name, hash_func, hash_value, max_limit,
                 return "toto"
         >>> add_max_limit("too_limit", my_hash, "toto", 3)
     """
-    if "=" in name:
-        raise Exception("'=' not allowed in limit names")
+    if "==" in name:
+        raise Exception("'==' not allowed in limit names")
     Limits.add(name, Limit(hash_func, hash_value, max_limit, show_in_stats))
