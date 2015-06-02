@@ -272,7 +272,6 @@ def expiration_handler(single_iteration=False):
         to_trash = []
         queues_to_find = set()
         for rid, tmp in blocked_exchanges.items():
-            break
             counter, exchange = tmp
             lifetime = exchange.lifetime()
             local_queue_ms = exchange.lifetime_in_local_queue_ms()
@@ -319,10 +318,14 @@ def launch_exchange_or_queue_it(exchange, choosen_counter=None):
         logger.warning("expired request #%s (lifetime: %i) got from "
                        "local queue => trash it", rid, lifetime)
         expired_request_counter += 1
+        if rid in blocked_exchanges:
+            del(blocked_exchanges[rid])
         return None
     if stopping >= 2:
         host, port = exchange.queue.host, exchange.queue.port
         queue_for_bus_reinject(host, port, priority, exchange)
+        if rid in blocked_exchanges:
+            del(blocked_exchanges[rid])
         return None
     if exchange.conditions is None:
         exchange.conditions = Limits.conditions(exchange.request)
@@ -342,6 +345,8 @@ def launch_exchange_or_queue_it(exchange, choosen_counter=None):
                          "re reuploading request %s on redis://%s:%i",
                          choosen_counter, rid, host, port)
             queue_for_bus_reinject(host, port, priority, exchange)
+            if rid in blocked_exchanges:
+                del(blocked_exchanges[rid])
         return counters
     else:
         if rid in blocked_exchanges:
