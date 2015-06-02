@@ -175,8 +175,11 @@ def process_request(exchange, before):
         response = tornado.httpclient.HTTPResponse(request, 310)
     after = datetime.now()
     dt = after - before
-    logger.info("Got a reply #%i after %i ms (#%s, %s on %s)", response.code,
-                timedelta_total_ms(dt), rid, request.method, request.url)
+    td_ms = timedelta_total_ms(dt)
+    logger.info("Got a reply #%i after %i ms (execution) and %i ms (queue) "
+                "for (#%s, %s on %s)", response.code,
+                td_ms, exchange.lifetime_in_local_queue_ms() - td_ms,
+                rid, request.method, request.url)
     redis_pool = get_redis_pool(queue.host, queue.port)
     pipeline = tornadis.Pipeline()
     pipeline.stack_call("LPUSH", response_key,
@@ -284,9 +287,9 @@ def expiration_handler(single_iteration=False):
                 host = exchange.queue.host
                 port = exchange.queue.port
                 priority = exchange.priority
-                logger.debug("request #%s spent %s ms in local queue "
-                             " => reuploading it on redis://%s:%i", rid,
-                             local_queue_ms, host, port)
+                logger.info("request #%s spent %s ms in local queue "
+                            " => reuploading it on redis://%s:%i", rid,
+                            local_queue_ms, host, port)
                 queue_for_bus_reinject(host, port, priority, exchange,
                                        remove_from_blocked_exchange=False)
                 to_trash.append(rid)
