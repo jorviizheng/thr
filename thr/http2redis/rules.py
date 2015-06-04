@@ -30,11 +30,12 @@ class Criteria(object):
     """
 
     def __init__(self, **kwargs):
-        self.criteria = kwargs
         self.criterion_names = [
             name.replace('get_', '', 1) for name in dir(HTTPExchange)
             if name.startswith('get_') and not name.startswith('get_custom_')
         ]
+        self.criteria = {x: y for x, y in kwargs.items()
+                         if x in self.criterion_names or x == 'custom'}
 
     def eval_single_criterion_value(self, criterion, value):
         if isinstance(criterion, (glob, regexp)):
@@ -42,10 +43,7 @@ class Criteria(object):
         else:
             return value == criterion
 
-    def check_exchange_attribute(self, exchange, name):
-        criterion = self.criteria.get(name)
-        if criterion is None:
-            return True
+    def check_exchange_attribute(self, exchange, name, criterion):
         getter = getattr(exchange, "get_%s" % name)
         value = getter()
         if isinstance(criterion, (list, tuple)):
@@ -54,7 +52,6 @@ class Criteria(object):
         else:
             return self.eval_single_criterion_value(criterion, value)
 
-    @gen.coroutine
     def match(self, exchange):
         """Check a request against the criteria
 
@@ -64,39 +61,19 @@ class Criteria(object):
         Returns:
             bool
         """
-        def check_maybe_future(maybe):
-            if isinstance(maybe, concurrent.Future):
-                if maybe.done():
-                    if maybe.result():
-                        return True
-                else:
-                    return None
+        for name, criterion in self.criteria.items():
+            if name != 'custom':
+                tmp = self.check_exchange_attribute(exchange, name, criterion)
+                if tmp is False:
+                    return False
             else:
-                if maybe:
-                    return True
-            return False
-        futures = []
-        for attrname in self.criterion_names:
-            tmp = self.check_exchange_attribute(exchange, attrname)
-            tmpres = check_maybe_future(tmp)
-            if tmpres is None:
-                futures.append(tmp)
-            elif tmpres is False:
-                raise gen.Return(False)
-        if 'custom' in self.criteria:
-            callback = self.criteria['custom']
-            if not callable(callback):
-                raise Exception("custom criteria must be callable")
-            tmp = callback(exchange)
-            tmpres = check_maybe_future(tmp)
-            if tmpres is None:
-                futures.append(tmp)
-            elif tmpres is False:
-                raise gen.Return(False)
-        if len(futures):
-            results = yield futures
-            raise gen.Return(all(results))
-        raise gen.Return(True)
+                callback = self.criteria['custom']
+                if not callable(callback):
+                    raise Exception("custom criteria must be callable")
+                tmp = callback(exchange)
+                if tmp is False:
+                    return False
+        return True
 
 
 class Actions(object):
@@ -236,12 +213,24 @@ class Rules(object):
     @classmethod
     @gen.coroutine
     def _execute(cls, exchange, mode):
-        for rule in cls.rules:
-            match = yield rule.criteria.match(exchange)
+        matched_rules = []
+        test = True
+        if exchange.matched_rules is not None:
+            rules = exchange.matched_rules
+            test = False
+        else:
+            rules = cls.rules
+        for rule in rules:
+            if test:
+                match = rule.criteria.match(exchange)
+            else:
+                match = True
             if match:
                 yield rule.actions._execute(exchange, mode)
+                matched_rules.append(rule)
                 if rule.stop:
-                    return
+                    break
+        exchange.matched_rules = matched_rules
 
 
 def add_rule(criteria, actions, **kwargs):

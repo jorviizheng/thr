@@ -51,6 +51,7 @@ class HTTPExchange(object):
         self.output_default_body = None
         self.request_id = make_unique_id()
         self.priority = 50
+        self.matched_rules = None
 
     def set_custom_value(self, key, value):
         self.keyvalues[key] = value

@@ -12,42 +12,42 @@ class TestCriteria(testing.AsyncTestCase):
     def test_method_match(self):
         request = HTTPServerRequest(method='GET', uri='/')
         criteria = Criteria(method='GET')
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
     def test_method_match2(self):
         request = HTTPServerRequest(method='POST', uri='/')
         criteria = Criteria(method=['GET', 'POST'])
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
     def test_method_does_not_match(self):
         request = HTTPServerRequest(method='GET', uri='/')
         criteria = Criteria(method='POST')
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertFalse(result)
 
     @testing.gen_test
     def test_path_match(self):
         request = HTTPServerRequest(uri='/foo/bar')
         criteria = Criteria(path=regexp('^/foo.*$'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
     def test_path_match2(self):
         request = HTTPServerRequest(uri='/foo/bar')
         criteria = Criteria(path=regexp('^/bar.*$', '^/foo.*$'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
     def test_path_does_not_match(self):
         request = HTTPServerRequest(uri='/quux/bar')
         criteria = Criteria(path=regexp('^/foo.*$'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertFalse(result)
 
     @testing.gen_test
@@ -56,7 +56,7 @@ class TestCriteria(testing.AsyncTestCase):
             return True
         request = HTTPServerRequest(uri='/foo/bar')
         criteria = Criteria(custom=criterion_function)
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
@@ -65,7 +65,7 @@ class TestCriteria(testing.AsyncTestCase):
             return False
         request = HTTPServerRequest(uri='/foo/bar')
         criteria = Criteria(custom=criterion_function)
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertFalse(result)
 
     @testing.gen_test
@@ -73,7 +73,7 @@ class TestCriteria(testing.AsyncTestCase):
         request = HTTPServerRequest(uri='/')
         request.remote_ip = '10.0.0.1'
         criteria = Criteria(remote_ip=glob('10.0.0.*'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
@@ -81,7 +81,7 @@ class TestCriteria(testing.AsyncTestCase):
         request = HTTPServerRequest(uri='/')
         request.remote_ip = '10.0.0.1'
         criteria = Criteria(remote_ip=glob('192.168.0.*', '10.0.0.*'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertTrue(result)
 
     @testing.gen_test
@@ -89,7 +89,7 @@ class TestCriteria(testing.AsyncTestCase):
         request = HTTPServerRequest(uri='/')
         request.remote_ip = '10.0.0.1'
         criteria = Criteria(remote_ip=glob('10.0.1.*'))
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertFalse(result)
 
     @testing.gen_test
@@ -99,5 +99,5 @@ class TestCriteria(testing.AsyncTestCase):
         request = HTTPServerRequest(uri='/')
         request.remote_ip = '10.0.0.1'
         criteria = Criteria(remote_ip=criterion_function)
-        result = yield criteria.match(HTTPExchange(request))
+        result = criteria.match(HTTPExchange(request))
         self.assertFalse(result)
