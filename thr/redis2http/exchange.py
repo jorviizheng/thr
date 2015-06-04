@@ -27,7 +27,11 @@ class HTTPRequestExchange(object):
         self.creation_time = time.time()
 
     def unserialize_request(self):
-        force_host = "%s:%i" % (self.queue.http_host, self.queue.http_port)
+        if self.queue.http_host.startswith('unixsocket_'):
+            # This is a unix socket
+            force_host = self.queue.http_host
+        else:
+            force_host = "%s:%i" % (self.queue.http_host, self.queue.http_port)
         self.__request, self.__body_link, self.__extra_dict = \
             unserialize_request_message(self.serialized_request,
                                         force_host=force_host)

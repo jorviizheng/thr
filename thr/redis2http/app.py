@@ -26,6 +26,7 @@ from thr.redis2http.counter import get_counter, get_counter_blocks
 from thr.redis2http.counter import get_global_counter_name
 from thr.redis2http.counter import conditional_incr_counters
 from thr.utils import serialize_http_response, timedelta_total_ms
+from thr.utils import UnixResolver
 from thr import DEFAULT_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS
@@ -74,7 +75,8 @@ logger = logging.getLogger("thr.redis2http")
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
-                                             max_clients=100000)
+                                             max_clients=100000,
+                                             resolver=UnixResolver())
 
 
 def blocked_queue_put_nowait(counter_name, priority, exchange):

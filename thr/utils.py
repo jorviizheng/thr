@@ -14,6 +14,8 @@ from fnmatch import fnmatch
 from six.moves.urllib.parse import urlencode
 from tornado.httpclient import HTTPRequest
 from tornado.httputil import HTTPHeaders
+from tornado.netutil import Resolver
+from tornado.gen import coroutine, Return
 
 
 class glob(object):
@@ -348,3 +350,23 @@ def unserialize_response_message(message):
 def timedelta_total_ms(td):
     us = td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6
     return int(us / 1000)
+
+
+# inspired from https://gist.github.com/bdarnell/8641880
+class UnixResolver(Resolver):
+
+    unixsockets = []
+
+    @classmethod
+    def register_unixsocket(cls, socket_path):
+        cls.unixsockets.append(socket_path)
+        return "unixsocket_%i" % (len(cls.unixsockets) - 1)
+
+    @coroutine
+    def resolve(self, host, port, *args, **kwargs):
+        if host.startswith('unixsocket_'):
+            unix_socket_num = int(host.replace('unixsocket_', '', 1))
+            unix_socket_path = UnixResolver.unixsockets[unix_socket_num]
+            raise Return([(socket.AF_UNIX, unix_socket_path)])
+        result = yield Resolver.resolve(self, host, port, *args, **kwargs)
+        raise Return(result)

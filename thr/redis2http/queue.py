@@ -7,6 +7,7 @@
 import six
 
 from thr import DEFAULT_HTTP_PORT
+from thr.utils import UnixResolver
 
 
 # Trick to be able to iter over Queues
@@ -47,7 +48,14 @@ class Queue(object):
 
 def add_queue(host, port, queues, http_host="localhost",
               http_port=DEFAULT_HTTP_PORT, workers=1):
-    if isinstance(queues, six.string_types):
-        Queues.add(Queue(host, port, [queues], http_host, http_port, workers))
+    if http_host.startswith('/'):
+        # This is an unix socket
+        new_http_host = UnixResolver.register_unixsocket(http_host)
     else:
-        Queues.add(Queue(host, port, queues, http_host, http_port, workers))
+        new_http_host = http_host
+    if isinstance(queues, six.string_types):
+        Queues.add(Queue(host, port, [queues], new_http_host, http_port,
+                         workers))
+    else:
+        Queues.add(Queue(host, port, queues, new_http_host, http_port,
+                         workers))
