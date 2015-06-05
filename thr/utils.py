@@ -357,10 +357,16 @@ class UnixResolver(Resolver):
 
     unixsockets = []
 
+    def initialize(self, resolver):
+        self.resolver = resolver
+
     @classmethod
     def register_unixsocket(cls, socket_path):
         cls.unixsockets.append(socket_path)
         return "unixsocket_%i" % (len(cls.unixsockets) - 1)
+
+    def close(self):
+        self.resolver.close()
 
     @coroutine
     def resolve(self, host, port, *args, **kwargs):
@@ -368,5 +374,5 @@ class UnixResolver(Resolver):
             unix_socket_num = int(host.replace('unixsocket_', '', 1))
             unix_socket_path = UnixResolver.unixsockets[unix_socket_num]
             raise Return([(socket.AF_UNIX, unix_socket_path)])
-        result = yield Resolver.resolve(self, host, port, *args, **kwargs)
+        result = yield self.resolver.resolve(host, port, *args, **kwargs)
         raise Return(result)

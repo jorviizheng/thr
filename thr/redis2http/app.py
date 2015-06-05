@@ -74,9 +74,10 @@ blocked_queues = {}
 logger = logging.getLogger("thr.redis2http")
 
 async_client_impl = "tornado.simple_httpclient.SimpleAsyncHTTPClient"
+resolver = UnixResolver(resolver=tornado.netutil.Resolver())
 tornado.httpclient.AsyncHTTPClient.configure(async_client_impl,
                                              max_clients=100000,
-                                             resolver=UnixResolver())
+                                             resolver=resolver)
 
 
 def blocked_queue_put_nowait(counter_name, priority, exchange):
