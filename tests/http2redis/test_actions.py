@@ -1,6 +1,5 @@
 from tornado.httputil import HTTPServerRequest, HTTPHeaders
-from tornado import gen
-from tornado.testing import AsyncTestCase, gen_test
+from tornado.testing import AsyncTestCase
 
 from thr.http2redis.exchange import HTTPExchange
 from thr.http2redis.rules import Actions
@@ -57,18 +56,6 @@ class TestActions(AsyncTestCase):
         actions = Actions(set_input_header=callback)
         actions.execute_input_actions(exchange)
         self.assertEqual(request.headers['Header-Name'], 'header value')
-
-    @gen_test
-    def test_set_status_code_with_coroutine(self):
-        @gen.coroutine
-        def callback(request):
-            yield gen.maybe_future(None)
-            raise gen.Return(201)
-        request = HTTPServerRequest(method='GET', uri='/')
-        exchange = HTTPExchange(request)
-        actions = Actions(set_status_code=callback)
-        yield actions.execute_input_actions(exchange)
-        self.assertEqual(exchange.response.status_code, 201)
 
     def test_add_input_header(self):
         headers = HTTPHeaders()

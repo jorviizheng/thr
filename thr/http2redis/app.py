@@ -53,6 +53,12 @@ class Handler(RequestHandler):
 
     __request_id = None
 
+    def compute_etag(self, *args, **kwargs):
+        return None
+
+    def check_etag_header(self, *args, **kwargs):
+        return False
+
     def get(self, *args, **kwargs):
         return self.handle(*args, **kwargs)
 

@@ -93,21 +93,21 @@ class Actions(object):
     """
 
     def __init__(self, **kwargs):
-        self.actions = kwargs
         self.action_names = [
             name for name in dir(HTTPExchange)
             if name.startswith('set_') or name.startswith('add_')
             or name.startswith('del_')
         ]
+        self.input_actions = {x: y for x, y in kwargs.items()
+                              if x in self.action_names and
+                              (not self.is_output_action_name(x))}
+        self.output_actions = {x: y for x, y in kwargs.items()
+                               if x in self.action_names and
+                               self.is_output_action_name(x)}
         self.action_names.append("custom_input")
         self.action_names.append("custom_output")
-        self.output_action_names = []
-        self.input_action_names = []
-        for action_name in self.action_names:
-            if self.is_output_action_name(action_name):
-                self.output_action_names.append(action_name)
-            else:
-                self.input_action_names.append(action_name)
+        self.custom_input_action = kwargs.get('custom_input', None)
+        self.custom_output_action = kwargs.get('custom_output', None)
 
     def execute_output_actions(self, exchange):
         return self._execute(exchange, "output")
@@ -117,9 +117,6 @@ class Actions(object):
 
     def is_output_action_name(self, action_name):
         return action_name.endswith('_output') or '_output_' in action_name
-
-    def is_custom_action_name(self, action_name):
-        return action_name.startswith('custom_')
 
     @gen.coroutine
     def _execute(self, exchange, mode):
@@ -134,48 +131,30 @@ class Actions(object):
         """
         if mode not in ("input", "output"):
             raise Exception("mode must be input or output")
-        futures = {}
-        result_dict = {}
         if mode == 'output':
-            action_names = self.output_action_names
+            actions = self.output_actions
+            custom_action = self.custom_output_action
         else:
-            action_names = self.input_action_names
-        for action_name in action_names:
-            action = self.actions.get(action_name)
-            if not action:
-                continue
+            actions = self.input_actions
+            custom_action = self.custom_input_action
+        for action_name, action in actions.items():
             if action:
                 if callable(action):
                     value = action(exchange)
-                    if isinstance(value, concurrent.Future):
-                        if value.done():
-                            result_dict[action_name] = value.result()
-                        else:
-                            futures[action_name] = value
-                    else:
-                        result_dict[action_name] = value
+                    value_to_set = value
                 else:
-                    if self.is_custom_action_name(action_name):
-                        raise Exception("custom_ actions must be callable")
-                    result_dict[action_name] = action
-
-        if len(futures) > 0:
-            futures_result_dict = yield futures
-            for key, value in futures_result_dict.items():
-                result_dict[key] = value
-
-        for action_name in action_names:
-            action = self.actions.get(action_name)
-            if action is None:
-                continue
-            if self.is_custom_action_name(action_name):
-                # If it's a custom action, the exchange object is already
-                # modified
-                continue
-            set_value = getattr(exchange, action_name)
-            value = result_dict[action_name]
-            if value is not None:
-                set_value(value)
+                    value_to_set = action
+                if value_to_set is not None:
+                    set_value = getattr(exchange, action_name)
+                    set_value(value_to_set)
+        if custom_action is not None:
+            if callable(custom_action):
+                value = custom_action(exchange)
+                if isinstance(value, concurrent.Future):
+                    if not value.done():
+                        yield value
+            else:
+                raise Exception("custom_ actions must be callable")
 
 
 class Rule(object):

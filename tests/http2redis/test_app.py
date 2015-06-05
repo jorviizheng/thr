@@ -134,12 +134,12 @@ class TestApp(AsyncHTTPTestCase):
         Rules.reset()
 
         @gen.coroutine
-        def coroutine_action(request):
-            yield gen.maybe_future(None)
-            raise gen.Return(202)
+        def coroutine_action(exchange):
+            yield gen.sleep(0.1)
+            exchange.set_status_code(202)
 
         add_rule(Criteria(path='/quux'),
-                 Actions(set_status_code=coroutine_action,
+                 Actions(custom_input=coroutine_action,
                          set_redis_queue='test-queue'),
                  stop=1)
         response = yield self.http_client.fetch(self.get_url('/quux'))
