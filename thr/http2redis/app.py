@@ -31,6 +31,8 @@ define("redis_host", default=DEFAULT_REDIS_HOST,
        help="Default redis server hostname or ip")
 define("redis_port", default=DEFAULT_REDIS_PORT, type=int,
        help="Default redis server port")
+define("redis_uds", type=str,
+       help="Default redis unix socket path")
 define("redis_queue", default=DEFAULT_REDIS_QUEUE,
        help="Default redis queue")
 define("unix_socket", default=None, help="Path to unix socket to bind")
@@ -39,14 +41,21 @@ redis_pools = {}
 running_exchanges = {}
 
 
-def get_redis_pool(host, port):
+def get_redis_pool(host=None, port=None, uds=None):
     global redis_pools
-    key = "%s:%i" % (host, port)
+    if uds is None:
+        key = "%s:%i" % (host, port)
+    else:
+        key = uds
     if key not in redis_pools:
-        kwargs = {"host": host, "port": port, "autoclose": True,
-                  "connect_timeout": options.timeout,
-                  "tcp_nodelay": True,
+        kwargs = {"autoclose": True, "connect_timeout": options.timeout,
                   "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
+        if uds is None:
+            kwargs["host"] = host
+            kwargs["port"] = port
+            kwargs["tcp_nodelay"] = True
+        else:
+            kwargs["unix_domain_socket"] = uds
         redis_pools[key] = tornadis.ClientPool(**kwargs)
     return redis_pools[key]
 
@@ -126,7 +135,8 @@ class Handler(RequestHandler):
         exchange = HTTPExchange(self.request,
                                 default_redis_host=options.redis_host,
                                 default_redis_port=options.redis_port,
-                                default_redis_queue=options.redis_queue)
+                                default_redis_queue=options.redis_queue,
+                                default_redis_uds=options.redis_uds)
         self.__request_id = exchange.request_id
         running_exchanges[self.__request_id] = exchange
         yield Rules.execute_input_actions(exchange)
@@ -143,8 +153,9 @@ class Handler(RequestHandler):
             self.return_http_reply(exchange, force_status=404,
                                    force_body="no redis queue set")
         else:
-            redis_pool = get_redis_pool(exchange.redis_host,
-                                        exchange.redis_port)
+            redis_pool = get_redis_pool(host=exchange.redis_host,
+                                        port=exchange.redis_port,
+                                        uds=exchange.redis_uds)
             with (yield redis_pool.connected_client()) as redis:
                 response_key = "thr:queue:response:%s" % make_unique_id()
                 serialized_request = serialize_http_request(

@@ -36,26 +36,33 @@ class Queues(object):
 
 class Queue(object):
 
-    def __init__(self, host, port, queues, http_host="localhost",
-                 http_port=DEFAULT_HTTP_PORT, workers=1):
+    def __init__(self, queues, host="localhost", port=6379,
+                 http_host="localhost",
+                 http_port=DEFAULT_HTTP_PORT, workers=1,
+                 unix_domain_socket=None):
         self.host = host
         self.port = port
+        self.unix_domain_socket = unix_domain_socket
         self.queues = queues
         self.http_host = http_host
         self.http_port = http_port
         self.workers = workers
 
 
-def add_queue(host, port, queues, http_host="localhost",
-              http_port=DEFAULT_HTTP_PORT, workers=1):
+def add_queue(queues, host="localhost", port=6379, http_host="localhost",
+              http_port=DEFAULT_HTTP_PORT, workers=1,
+              unix_domain_socket=None):
     if http_host.startswith('/'):
         # This is an unix socket
         new_http_host = UnixResolver.register_unixsocket(http_host)
     else:
         new_http_host = http_host
     if isinstance(queues, six.string_types):
-        Queues.add(Queue(host, port, [queues], new_http_host, http_port,
-                         workers))
+        Queues.add(Queue([queues], host=host, port=port,
+                         http_host=new_http_host,
+                         http_port=http_port, workers=workers,
+                         unix_domain_socket=unix_domain_socket))
     else:
-        Queues.add(Queue(host, port, queues, new_http_host, http_port,
-                         workers))
+        Queues.add(Queue(queues, host=host, port=port, http_host=new_http_host,
+                         http_port=http_port, workers=workers,
+                         unix_domain_socket=unix_domain_socket))

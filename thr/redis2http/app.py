@@ -102,42 +102,81 @@ def get_blocked_queue_size(counter_name):
     return blocked_queues[counter_name].qsize()
 
 
-def get_bus_reinject_queue(host, port):
+def get_bus_reinject_queue(host=None, port=None, unix_domain_socket=None):
     global bus_reinject_queues
-    key = "%s:%i" % (host, port)
+    if unix_domain_socket is not None:
+        key = unix_domain_socket
+    else:
+        key = "%s:%i" % (host, port)
     if key not in bus_reinject_queues:
         bus_reinject_queues[key] = toro.PriorityQueue()
     return bus_reinject_queues[key]
 
 
-def get_redis_pool(host, port):
+def get_redis_pool(host=None, port=None, unix_domain_socket=None):
     global redis_pools
-    key = "%s:%i" % (host, port)
+    if unix_domain_socket is not None:
+        key = unix_domain_socket
+    else:
+        key = "%s:%i" % (host, port)
     if key not in redis_pools:
-        redis_pools[key] = \
-            tornadis.ClientPool(host=host, port=port,
-                                connect_timeout=options.timeout,
-                                tcp_nodelay=True,
-                                client_timeout=REDIS_POOL_CLIENT_TIMEOUT)
+        kwargs = {"connect_timeout": options.timeout,
+                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
+        if unix_domain_socket is not None:
+            kwargs["unix_domain_socket"] = unix_domain_socket
+        else:
+            kwargs["tcp_nodelay"] = True
+            kwargs["host"] = host
+            kwargs["port"] = port
+        redis_pools[key] = tornadis.ClientPool(**kwargs)
     return redis_pools[key]
 
 
-def get_redis_client(host, port):
-    return tornadis.Client(host=host, port=port, tcp_nodelay=True,
-                           connect_timeout=options.timeout)
+def get_redis_client(host=None, port=None, unix_domain_socket=None):
+    kwargs = {"connect_timeout": options.timeout}
+    if unix_domain_socket is not None:
+        kwargs["unix_domain_socket"] = unix_domain_socket
+    else:
+        kwargs["tcp_nodelay"] = True
+        kwargs["host"] = host
+        kwargs["port"] = port
+    return tornadis.Client(**kwargs)
+
+
+def format_redis_server(host=None, port=None, unix_domain_socket=None,
+                        queue=None, queues=None):
+    qs = queues
+    if queue is not None:
+        h = queue.host
+        p = queue.port
+        uds = queue.unix_domain_socket
+        if queues is not None:
+            qs = queue.queues
+    else:
+        h = host
+        p = port
+        uds = unix_domain_socket
+    if qs is not None:
+        qs_string = "/" + ",".join(qs)
+    else:
+        qs_string = ""
+    if uds is not None:
+        return "redis://%s%s" % (uds, qs_string)
+    else:
+        return "redis://%s:%i%s" % (h, p, qs_string)
 
 
 @tornado.gen.coroutine
 def request_redis_handler(queue, single_iteration=False):
     global expired_request_counter
-    redis = get_redis_client(queue.host, queue.port)
+    redis = get_redis_client(queue.host, queue.port, queue.unix_domain_socket)
     brpop_args = queue.queues + [BRPOP_TIMEOUT]
     while stopping < 1:
         tmp = yield redis.call('BRPOP', *brpop_args)
         if isinstance(tmp, tornadis.ConnectionError):
-            logger.warning("connection error while brpoping queues "
-                           "redis://%s:%i/%s => sleeping 5s and retrying",
-                           queue.host, queue.port, ",".join(queue.queues))
+            logger.warning("connection error while brpoping queues %s "
+                           "=> sleeping 5s and retrying",
+                           format_redis_server(queue=queue))
             yield tornado.gen.sleep(5)
             continue
         if tmp:
@@ -146,8 +185,8 @@ def request_redis_handler(queue, single_iteration=False):
             launch_exchange_or_queue_it(exchange)
         if single_iteration:
             break
-    logger.info("request_redis_handler redis://%s:%i/%s stopped", queue.host,
-                queue.port, ",".join(queue.queues))
+    logger.info("request_redis_handler %s stopped",
+                format_redis_server(queue=queue))
 
 
 @tornado.gen.coroutine
@@ -185,7 +224,8 @@ def process_request(exchange, before):
                 "for (#%s, %s on %s)", response.code,
                 td_ms, exchange.lifetime_in_local_queue_ms() - td_ms,
                 rid, request.method, request.url)
-    redis_pool = get_redis_pool(queue.host, queue.port)
+    redis_pool = get_redis_pool(queue.host, queue.port,
+                                queue.unix_domain_socket)
     pipeline = tornadis.Pipeline()
     pipeline.stack_call("LPUSH", response_key,
                         serialize_http_response(response))
@@ -195,8 +235,9 @@ def process_request(exchange, before):
         if len(redis_res) != 2 or \
                 not isinstance(redis_res[0], six.integer_types) or \
                 not isinstance(redis_res[1], six.integer_types):
-            logger.warning("can't send the result on redis://%s:%i for "
-                           "request #%s", queue.host, queue.port, rid)
+            logger.warning("can't send the result on %s for "
+                           "request #%s", format_redis_server(queue=queue),
+                           rid)
 
 
 def reinject_blocking_queue(counter):
@@ -222,10 +263,11 @@ def reinject_blocking_queue(counter):
         blocked_queue_put_nowait(counter, tmp[0], tmp[1])
 
 
-def queue_for_bus_reinject(host, port, priority, exchange,
+def queue_for_bus_reinject(host, port, unix_domain_socket, priority, exchange,
                            remove_from_blocked_exchange=True):
     global blocked_exchanges
-    get_bus_reinject_queue(host, port).put_nowait((priority, exchange))
+    get_bus_reinject_queue(host, port,
+                           unix_domain_socket).put_nowait((priority, exchange))
     rid = exchange.request_id
     if remove_from_blocked_exchange:
         if rid in blocked_exchanges:
@@ -233,10 +275,12 @@ def queue_for_bus_reinject(host, port, priority, exchange,
 
 
 @tornado.gen.coroutine
-def bus_reinject_handler(host, port, single_iteration=False):
+def bus_reinject_handler(host=None, port=None, unix_domain_socket=None,
+                         single_iteration=False):
     global bus_reinject_counter
-    redis = get_redis_client(host, port)
-    queue = get_bus_reinject_queue(host, port)
+    redis = get_redis_client(host=host, port=port,
+                             unix_domain_socket=unix_domain_socket)
+    queue = get_bus_reinject_queue(host, port, unix_domain_socket)
     deadline = timedelta(seconds=1)
     while True:
         if stopping >= 4 and queue.qsize() == 0:
@@ -246,27 +290,33 @@ def bus_reinject_handler(host, port, single_iteration=False):
         except toro.Timeout:
             continue
         rid = exchange.request_id
-        logger.debug("reinject request #%s on redis://%s:%i/%s", rid, host,
-                     port, exchange.redis_queue)
+        logger.debug("reinject request #%s on %s", rid,
+                     format_redis_server(host, port, unix_domain_socket,
+                                         queues=[exchange.redis_queue]))
         result = yield redis.call('LPUSH', exchange.redis_queue,
                                   exchange.serialized_request)
         if not isinstance(result, six.integer_types):
             if stopping >= 4:
                 logger.warning("can't reinject request #%s on "
-                               "redis://%s:%i/%s but we are stopping "
-                               "=> loosing requests",
-                               rid, host, port, exchange.redis_queue)
+                               "%s but we are stopping "
+                               "=> loosing requests", rid,
+                               format_redis_server(host, port,
+                                                   unix_domain_socket,
+                                                   [exchange.redis_queue]))
                 break
-            logger.warning("can't reinject request #%s on redis://%s:%i/%s "
+            logger.warning("can't reinject request #%s on %s "
                            "=> sleeping 5s and re-queueing the request",
-                           rid, host, port, exchange.redis_queue)
+                           rid, format_redis_server(host, port,
+                                                    unix_domain_socket,
+                                                    [exchange.redis_queue]))
             yield tornado.gen.sleep(5)
             queue.put_nowait((priority, exchange))
         else:
             bus_reinject_counter += 1
         if single_iteration:
             break
-    logger.info("bus_reinject_handler redis://%s:%i stopped", host, port)
+    logger.info("bus_reinject_handler %s stopped",
+                format_redis_server(host, port, unix_domain_socket))
 
 
 @tornado.gen.coroutine
@@ -288,11 +338,13 @@ def expiration_handler(single_iteration=False):
             elif local_queue_ms > options.max_local_queue_lifetime_ms:
                 host = exchange.queue.host
                 port = exchange.queue.port
+                uds = exchange.queue.unix_domain_socket
                 priority = exchange.priority
                 logger.info("request #%s spent %s ms in local queue "
-                            " => reuploading it on redis://%s:%i", rid,
-                            local_queue_ms, host, port)
-                queue_for_bus_reinject(host, port, priority, exchange,
+                            " => reuploading it on %s", rid,
+                            local_queue_ms,
+                            format_redis_server(host, port, uds))
+                queue_for_bus_reinject(host, port, uds, priority, exchange,
                                        remove_from_blocked_exchange=False)
                 to_trash.append(rid)
                 queues_to_find.add(counter)
@@ -326,8 +378,10 @@ def launch_exchange_or_queue_it(exchange, choosen_counter=None):
             del(blocked_exchanges[rid])
         return None
     if stopping >= 2:
-        host, port = exchange.queue.host, exchange.queue.port
-        queue_for_bus_reinject(host, port, priority, exchange)
+        host = exchange.queue.host
+        port = exchange.queue.port
+        uds = exchange.queue.unix_domain_socket
+        queue_for_bus_reinject(host, port, uds, priority, exchange)
         if rid in blocked_exchanges:
             del(blocked_exchanges[rid])
         return None
@@ -344,11 +398,14 @@ def launch_exchange_or_queue_it(exchange, choosen_counter=None):
             if rid not in blocked_exchanges:
                 blocked_exchanges[rid] = (choosen_counter, exchange)
         except _queue.Full:
-            host, port = exchange.queue.host, exchange.queue.port
+            host = exchange.queue.host
+            port = exchange.queue.port
+            uds = exchange.queue.unix_domain_socket
             logger.debug("the blocking queue for counter %s is full => "
-                         "re reuploading request %s on redis://%s:%i",
-                         choosen_counter, rid, host, port)
-            queue_for_bus_reinject(host, port, priority, exchange)
+                         "re reuploading request %s on %s",
+                         choosen_counter, rid,
+                         format_redis_server(host, port, uds))
+            queue_for_bus_reinject(host, port, uds, priority, exchange)
             if rid in blocked_exchanges:
                 del(blocked_exchanges[rid])
         return counters
@@ -478,12 +535,15 @@ def main():
     for queue in Queues:
         host = queue.host
         port = queue.port
+        uds = queue.unix_domain_socket
         workers = queue.workers
         for i in range(0, workers):
             loop.add_future(request_redis_handler(queue), stop_loop)
             running_request_redis_handler_number += 1
         if "%s:%i" % (host, port) not in launched_bus_reinject_handlers:
-            loop.add_future(bus_reinject_handler(host, port), stop_loop)
+            loop.add_future(bus_reinject_handler(host=host, port=port,
+                                                 unix_domain_socket=uds),
+                            stop_loop)
             launched_bus_reinject_handlers["%s:%i" % (host, port)] = True
             running_bus_reinject_handler_number += 1
     loop.add_future(expiration_handler(), stop_loop)

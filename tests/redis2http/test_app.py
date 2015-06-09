@@ -59,7 +59,8 @@ class TestRedis2HttpApp(AsyncTestCase):
         req = tornado.httputil.HTTPServerRequest("GET", "/foo")
         msg = serialize_http_request(req, dict_to_inject=dct)
         exchange = HTTPRequestExchange(msg,
-                                       Queue("localhost", 6379, ["foo"]))
+                                       Queue(["foo"], host="localhost",
+                                             port=6379))
         yield process_request(exchange, datetime.now())
         fetch_patcher.stop()
         client = tornadis.Client()

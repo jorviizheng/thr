@@ -28,9 +28,11 @@ class HTTPExchange(object):
     Attributes:
         request: A Tornado HTTPServerRequest object.
         response: a HTTPExchangeResponse object.
-        redis_server: the hostname or ip of the redis server where to
+        redis_host: the hostname or ip of the redis server where to
             push the request.
         redis_port: the port of the redis server where to push the request.
+        redis_uds: path of a unix domain socket to connect to (if set,
+            overrides, redis_host/redis_port attributes).
         redis_queue: the name of the redis queue where to push the request.
         keyvalues: a dict key=>value to store custom key/values (helper for
             config file).
@@ -41,11 +43,13 @@ class HTTPExchange(object):
 
     def __init__(self, request, default_redis_host=DEFAULT_REDIS_HOST,
                  default_redis_port=DEFAULT_REDIS_PORT,
-                 default_redis_queue=DEFAULT_REDIS_QUEUE):
+                 default_redis_queue=DEFAULT_REDIS_QUEUE,
+                 default_redis_uds=None):
         self.request = request
         self.response = HTTPExchangeResponse()
         self.redis_host = default_redis_host
         self.redis_port = default_redis_port
+        self.redis_uds = default_redis_uds
         self.redis_queue = default_redis_queue
         self.keyvalues = {}
         self.output_default_body = None
@@ -103,6 +107,9 @@ class HTTPExchange(object):
 
     def set_redis_host(self, value):
         self.redis_host = value
+
+    def set_redis_uds(self, value):
+        self.redis_uds = value
 
     def set_redis_port(self, value):
         self.redis_port = value
