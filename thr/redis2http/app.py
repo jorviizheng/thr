@@ -117,12 +117,13 @@ def get_redis_pool(host, port):
         redis_pools[key] = \
             tornadis.ClientPool(host=host, port=port,
                                 connect_timeout=options.timeout,
+                                tcp_nodelay=True,
                                 client_timeout=REDIS_POOL_CLIENT_TIMEOUT)
     return redis_pools[key]
 
 
 def get_redis_client(host, port):
-    return tornadis.Client(host=host, port=port,
+    return tornadis.Client(host=host, port=port, tcp_nodelay=True,
                            connect_timeout=options.timeout)
 
 

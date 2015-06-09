@@ -5,7 +5,7 @@
 # See the LICENSE file for more information.
 
 from tornado import ioloop
-from tornado import gen, httpserver
+from tornado import gen, httpserver, netutil
 from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
@@ -33,6 +33,7 @@ define("redis_port", default=DEFAULT_REDIS_PORT, type=int,
        help="Default redis server port")
 define("redis_queue", default=DEFAULT_REDIS_QUEUE,
        help="Default redis queue")
+define("unix_socket", default=None, help="Path to unix socket to bind")
 
 redis_pools = {}
 running_exchanges = {}
@@ -44,6 +45,7 @@ def get_redis_pool(host, port):
     if key not in redis_pools:
         kwargs = {"host": host, "port": port, "autoclose": True,
                   "connect_timeout": options.timeout,
+                  "tcp_nodelay": True,
                   "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
         redis_pools[key] = tornadis.ClientPool(**kwargs)
     return redis_pools[key]
@@ -207,7 +209,12 @@ def main():
     print("Start http2redis on http://localhost:{}".format(options.port))
     app = make_app()
     server = httpserver.HTTPServer(app)
-    server.listen(options.port)
+    if options.unix_socket:
+        socket = netutil.bind_unix_socket(options.unix_socket)
+        server.add_socket(socket)
+    if options.port != 0:
+        sockets = netutil.bind_sockets(options.port)
+        server.add_sockets(sockets)
     signal.signal(signal.SIGTERM, functools.partial(sig_handler, server))
     ioloop.IOLoop.instance().set_blocking_log_threshold(1)
     ioloop.IOLoop.instance().start()
