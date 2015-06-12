@@ -140,7 +140,7 @@ def get_ip():
 
 
 def serialize_http_request(request, body_link=None, dict_to_inject=None,
-                           proxy_ip=None):
+                           proxy_ip="AUTO"):
     """Serializes a tornado HTTPServerRequest.
 
     Following attributes are used (and only these ones):
@@ -178,8 +178,15 @@ def serialize_http_request(request, body_link=None, dict_to_inject=None,
         if 'X-Forwarded-For' in request.headers:
             request.headers['X-Forwarded-For'] += ", %s" % proxy_ip
         else:
-            request.headers['X-Forwarded-For'] = "%s, %s" % (request.remote_ip,
-                                                             proxy_ip)
+            client_ip = request.headers.get('X-Real-Ip', None)
+            if client_ip is None:
+                if request.remote_ip != '0.0.0.0':
+                    client_ip = request.remote_ip
+            if client_ip is not None:
+                request.headers['X-Forwarded-For'] = \
+                    "%s, %s" % (client_ip, proxy_ip)
+            else:
+                request.headers['X-Forwarded-For'] = proxy_ip
     encoded_headers = list(request.headers.get_all())
     res = {"method": request.method,
            "path": request.path,
