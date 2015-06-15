@@ -152,9 +152,16 @@ class HTTPExchange(object):
         args = self.request.query_arguments
         args[arg_name] = [arg_value]
 
-    def del_query_string_arg(self, value):
+    def del_query_string_arg(self, value, case_insensitive=False):
         try:
-            del(self.request.query_arguments[value])
+            if not case_insensitive:
+                del(self.request.query_arguments[value])
+            else:
+                names = self.request.query_arguments.keys()
+                lowered_value = value.lower()
+                for name in names:
+                    if name.lower() == lowered_value:
+                        del(self.request.query_arguments[name])
         except KeyError:
             pass
 
