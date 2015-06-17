@@ -77,7 +77,7 @@ class TestUtils(TestCase):
         msg = serialize_http_request(req)
         (hreq, body_link, extra_dict) = \
             unserialize_request_message(msg)
-        self.assertEquals(len(list(hreq.headers.get_all())), 4)
+        self.assertEquals(len(list(hreq.headers.get_all())), 5)
         self.assertEquals(hreq.headers['Foo2'], "bar3")
         self.assertEquals(hreq.headers['Foo'], "bar,bar2")
 
