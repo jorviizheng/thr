@@ -173,3 +173,9 @@ class HTTPExchange(object):
 
     def get_remote_ip(self):
         return self.request.remote_ip
+
+    def get_real_ip(self):
+        if 'X-Real-Ip' in self.request.headers:
+            return self.request.headers['X-Real-Ip']
+        else:
+            return self.request.remote_ip
