@@ -49,7 +49,8 @@ def get_redis_pool(host=None, port=None, uds=None):
         key = uds
     if key not in redis_pools:
         kwargs = {"autoclose": True, "connect_timeout": options.timeout,
-                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
+                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT,
+                  "aggressive_write": True}
         if uds is None:
             kwargs["host"] = host
             kwargs["port"] = port

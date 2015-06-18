@@ -121,7 +121,8 @@ def get_redis_pool(host=None, port=None, unix_domain_socket=None):
         key = "%s:%i" % (host, port)
     if key not in redis_pools:
         kwargs = {"connect_timeout": options.timeout,
-                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT}
+                  "client_timeout": REDIS_POOL_CLIENT_TIMEOUT,
+                  "aggressive_write": True}
         if unix_domain_socket is not None:
             kwargs["unix_domain_socket"] = unix_domain_socket
         else:
@@ -133,7 +134,7 @@ def get_redis_pool(host=None, port=None, unix_domain_socket=None):
 
 
 def get_redis_client(host=None, port=None, unix_domain_socket=None):
-    kwargs = {"connect_timeout": options.timeout}
+    kwargs = {"connect_timeout": options.timeout, "aggressive_write": True}
     if unix_domain_socket is not None:
         kwargs["unix_domain_socket"] = unix_domain_socket
     else:
