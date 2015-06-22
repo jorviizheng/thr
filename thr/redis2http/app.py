@@ -51,6 +51,8 @@ define("stats_file", type=str, help="Complete path of the json stat file",
        default="/tmp/redis2http_stats.json")
 define("stats_frequency_ms", type=int, help="Stats file write frequency "
        "(in ms) (0 => no stats write)", default=2000)
+define("add_thr_extra_headers", type=bool, default=False,
+       help="Add X-Thr-* extra headers")
 
 redis_pools = {}
 running_request_redis_handler_number = 0
@@ -202,6 +204,11 @@ def process_request(exchange, before):
     response_key = exchange.extra_dict['response_key']
     queue = exchange.queue
     rid = exchange.request_id
+    if options.add_thr_extra_headers:
+        if queue.unix_domain_socket is not None:
+            request.headers['X-Thr-Bus'] = queue.unix_domain_socket
+        else:
+            request.headers['X-Thr-Bus'] = "%s:%i" % (queue.host, queue.port)
     logger.debug("Calling %s on %s (#%s)....", request.method, request.url,
                  rid)
     redirection = 0
