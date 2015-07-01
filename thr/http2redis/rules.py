@@ -25,6 +25,7 @@ class Criteria(object):
         path: check against the request path
         method: check the HTTP method
         remote_ip: check the remote IP address
+        real_ip: check the value of the ``X-Real-Ip`` header if present, falling back to the requests's ``remote_ip`` attribute
         custom: callback taking a request object as its sole argument
                 and returning a boolean value
     """
@@ -84,6 +85,11 @@ class Actions(object):
     :class:`Actions` and may be an action-specific value or a callable
     accepting an :class:`~thr.http2redis.exchange.HTTPExchange` as its sole
     argument and returning a value.
+
+    Each action keyword argument corresponds to a method of the
+    :class:`~thr.http2redis.exchange.HTTPExchange` class that starts
+    with either ``set_``, ``add_`` or ``del_``. Following are listed a few of those possible keyword arguments but please refer to
+    :class:`~thr.http2redis.exchange.HTTPExchange` API documentation to learn about all possible actions.
 
     Keyword Args:
         set_input_header: a pair of header name and value
