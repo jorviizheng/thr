@@ -95,8 +95,9 @@ class Actions(object):
     def __init__(self, **kwargs):
         self.action_names = [
             name for name in dir(HTTPExchange)
-            if name.startswith('set_') or name.startswith('add_')
-            or name.startswith('del_')
+            if name.startswith('set_') or
+            name.startswith('add_') or
+            name.startswith('del_')
         ]
         self.input_actions = {x: y for x, y in kwargs.items()
                               if x in self.action_names and
