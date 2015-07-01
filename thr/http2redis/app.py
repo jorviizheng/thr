@@ -36,6 +36,7 @@ define("redis_uds", type=str,
 define("redis_queue", default=DEFAULT_REDIS_QUEUE,
        help="Default redis queue")
 define("unix_socket", default=None, help="Path to unix socket to bind")
+define("backlog", type=int, default=128, help="socket backlog")
 
 redis_pools = {}
 running_exchanges = {}
@@ -222,10 +223,12 @@ def main():
     app = make_app()
     server = httpserver.HTTPServer(app)
     if options.unix_socket:
-        socket = netutil.bind_unix_socket(options.unix_socket)
+        socket = netutil.bind_unix_socket(options.unix_socket,
+                                          backlog=options.backlog)
         server.add_socket(socket)
     if options.port != 0:
-        sockets = netutil.bind_sockets(options.port)
+        sockets = netutil.bind_sockets(options.port,
+                                       backlog=options.backlog)
         server.add_sockets(sockets)
     signal.signal(signal.SIGTERM, functools.partial(sig_handler, server))
     ioloop.IOLoop.instance().set_blocking_log_threshold(1)
