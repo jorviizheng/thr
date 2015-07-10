@@ -74,7 +74,7 @@ class Limit(object):
 def add_max_limit(name, hash_func, hash_value, max_limit,
                   show_in_stats=True):
     """
-    Add a maximim limit for the specified value of the hash function
+    Add a maximum limit for the specified value of the hash function
 
     Args:
         name: a limit name (unique)
@@ -89,6 +89,11 @@ def add_max_limit(name, hash_func, hash_value, max_limit,
         >>> def my_hash(message):
                 return "toto"
         >>> add_max_limit("too_limit", my_hash, "toto", 3)
+
+    If you pass the same hash function hash_func as the hash_value
+    argument (ie. repeating the hash_func twice), then the limit will
+    be applied on requests that have the same value for that hash
+    function.
     """
     if "==" in name:
         raise Exception("'==' not allowed in limit names")

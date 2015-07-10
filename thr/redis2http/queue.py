@@ -52,6 +52,20 @@ class Queue(object):
 def add_queue(queues, host="localhost", port=6379, http_host="localhost",
               http_port=DEFAULT_HTTP_PORT, workers=1,
               unix_domain_socket=None):
+    """
+    Register a Redis queue
+
+    Args:
+        queues: a list Redis queues
+
+    Keyword Args:
+        host: Redis host
+        port: Redis port
+        http_host: upstream HTTP host
+        http_port: upstream http port
+        workers: number of coroutines popping requests from the queue
+        unix_domain_socket: unix domain socket file path
+    """
     if http_host.startswith('/'):
         # This is an unix socket
         new_http_host = UnixResolver.register_unixsocket(http_host)
