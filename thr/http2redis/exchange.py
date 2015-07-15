@@ -149,7 +149,8 @@ class HTTPExchange(object):
 
     def set_redis_uds(self, value):
         """
-        Set path of the unix domain socket of the redis instance where to push the request
+        Set path of the unix domain socket of the redis instance where
+        to push the request
         """
         self.redis_uds = value
 
