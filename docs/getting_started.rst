@@ -6,7 +6,7 @@ Hello THR
 
 THR is made of two programs:
 
-    * ``http2redis`` takes incoming requests and performs actions on those requests according to rules. One of the most common actions consists in inserting requests into Redis queues that will get consumed by ``redis2http``. When writing a request to a queue, ``http2redis`` specifies on which Redis key it wishes to receive the response and waits for a response on that key.
+    * ``http2redis`` takes incoming requests and performs actions on those requests according to rules. One of the most common actions consists in inserting requests into Redis queues that will get consumed by ``redis2http``. When appending a request to a queue, ``http2redis`` specifies on which Redis key it expects to receive the response and waits for a response on that key.
     * ``redis2http`` reads requests from incoming Redis queues, calls the actual underlying web services and writes responses back to the requested Redis key.
 
 To get started, let's create a minimal web service that responds "Hello World" to any request:
@@ -37,9 +37,9 @@ serve several simultaneous requests:
 .. literalinclude:: ../examples/limits/app_server.py
 
 
-We start this app using [Gunicorn](http://gunicorn.org/)::
+We start this app using `Gunicorn <http://gunicorn.org/>`_::
 
-    $ gunicorn -w 10 app_server:application
+    $ gunicorn --workers 10 --bind 0.0.0.0:9999 app_server:application
     [2015-07-10 17:17:28 +0000] [13971] [INFO] Starting gunicorn 19.2.1
     [2015-07-10 17:17:28 +0000] [13971] [INFO] Listening at: http://127.0.0.1:8000 (13971)
     [2015-07-10 17:17:28 +0000] [13971] [INFO] Using worker: sync

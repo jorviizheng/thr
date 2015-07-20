@@ -3,7 +3,7 @@ from thr.redis2http.limits import add_max_limit
 
 
 # Pop requests from thr:queue:hello and forward them to our service
-add_queue('thr:queue:hello', http_port=8000)
+add_queue('thr:queue:hello', http_port=9999)
 
 
 def limit_foo(request):

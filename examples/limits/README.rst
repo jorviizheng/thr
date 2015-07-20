@@ -1,7 +1,9 @@
 Start the app server::
 
-    $ python app_server.py 
-    Serving app on http://localhost:9999
+    $ gunicorn --workers 10 --bind 0.0.0.0:9999 app_server:application
+    [...]
+    [2015-07-20 09:05:36 +0000] [24161] [INFO] Listening at: http://0.0.0.0:9999 (24161)
+    [...]
 
 
 Start http2redis::
