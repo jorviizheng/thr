@@ -29,15 +29,23 @@ The source code for this example can be found in directory ``examples/hello``.
 Setting up limits
 ^^^^^^^^^^^^^^^^^
 
-Now we're going to see how to set up limits based on characateristics of
-incoming requests. In order to test this we need a web service that can
-serve several simultaneous requests:
+One of the interesting things about THR is the ability to do rate-limiting
+based on various criteria.
+
+Fixed limit values
+''''''''''''''''''
+
+In order to demonstrate how THR can do rate-limiting, we musn't be limited by
+the backend ability to server multiple simultaneous requests. The basic
+single-threaded "Hello World" example from the previous section won't be
+suitable, so we prepare a minimal app that can be served with `Gunicorn
+<http://gunicorn.org/>`_:
 
 
 .. literalinclude:: ../examples/limits/app_server.py
 
 
-We start this app using `Gunicorn <http://gunicorn.org/>`_::
+We start this app with ten workers processes using Gunicorn::
 
     $ gunicorn --workers 10 --bind 0.0.0.0:9999 app_server:application
     [2015-07-10 17:17:28 +0000] [13971] [INFO] Starting gunicorn 19.2.1
@@ -46,7 +54,7 @@ We start this app using `Gunicorn <http://gunicorn.org/>`_::
     [2015-07-10 17:17:28 +0000] [13976] [INFO] Booting worker with pid: 13976
     [...]
 
-Now we add a limit to ``redis2http`` configuration file:
+Now we add a limit to ``redis2http`` configuration file using the :py:func:`~thr.redis2http.limits.add_max_limit` function:
 
 .. literalinclude:: ../examples/limits/redis2http_conf.py
 
@@ -55,7 +63,7 @@ have the HTTP header ``Foo`` with a value of ``bar``.
 
 After restarting ``redis2http`` with the new configuration, let's see
 how the limit affects performance. First, let's try ten concurrent
-requests that shouldn't be affected by the limit::
+requests that don't match the criteria and therefore shouldn't be affected by the limit. We use the `Apache benchmarking tool <https://httpd.apache.org/docs/2.2/programs/ab.html>`_ to do that::
 
     $ ab -c10 -n10 -H "Foo: baz" http://127.0.0.1:8888/|grep 'Time taken'
     Time taken for tests:   1.045 seconds
@@ -69,7 +77,34 @@ one second overall to serve ten requests. Now let's see what happens with reques
 Our limit of two simultaneous requests being now applied, it takes five
 seconds to serve ten requests.
 
-If you pass the same hash function ``hash_func`` as the ``hash_value``
-argument (ie. repeating the ``hash_func`` argument twice), then the
-limit will be applied on requests that have the same value for that hash
-function. It can be useful to limit requests per user, for instance.
+Dynamic limit values
+''''''''''''''''''''
+
+If instead of passing a value as the third argument to :py:func:`~thr.redis2http.limits.add_max_limit`, we
+repeat the second argument, then the limit will be applied on requests for
+which the function returns the same value. Let's change our ``redis2http``
+configuration accordingly:
+
+
+.. literalinclude:: ../examples/limits/redis2http_conf_dynamic_limit.py
+
+
+The Apache benchmarking tool won't allow us to set dynamic headers so we're
+going to write a small Python script using the Tornado asynchronous client to
+send ten concurrent requests with ten different values for the ``Foo`` header:
+
+.. literalinclude:: ../examples/limits/dynamic_header_benchmark.py
+
+Let's measure its execution time::
+
+
+    $ time python dynamic_header_benchmark.py 
+
+    real    0m1.235s
+    user    0m0.106s
+    sys 0m0.093s
+
+Since each request has a different value for the ``Foo`` header, no limit is applied and all ten requests are served concurrently. If however we send the same header with each request, we observe that the limit of two simultaneous requests is applied::
+
+    $ ab -c10 -n10 -H "Foo: baz" http://127.0.0.1:8888/|grep 'Time taken'
+    Time taken for tests:   5.051 seconds

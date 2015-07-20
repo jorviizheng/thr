@@ -79,21 +79,25 @@ def add_max_limit(name, hash_func, hash_value, max_limit,
     Args:
         name: a limit name (unique)
         hash_func: a hash function
-        hash_value: a string, :class:`~thr.http2redis.rules.glob` object
-            or a compiled regular expression object
+        hash_value: a string, :class:`~thr.http2redis.rules.glob` object,
+             compiled regular expression object or function identical to
+             ``hash_func``
         max_limit: an int
         show_in_stats: a boolean to hide (False) some limits from
             counter stats (if too many values).
 
     Examples:
-        >>> def my_hash(message):
+        >>> def my_hash(request):
                 return "toto"
-        >>> add_max_limit("too_limit", my_hash, "toto", 3)
+        >>> add_max_limit("toto_limit", my_hash, "toto", 3)
 
     If you pass the same hash function hash_func as the hash_value
     argument (ie. repeating the hash_func twice), then the limit will
     be applied on requests that have the same value for that hash
-    function.
+    function:
+        >>> def my_hash(request):
+                return request.headers.get('Foo')
+        >>> add_max_limit("toto_limit", my_hash, my_hash, 3)
     """
     if "==" in name:
         raise Exception("'==' not allowed in limit names")
