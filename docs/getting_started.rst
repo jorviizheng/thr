@@ -30,7 +30,8 @@ Setting up limits
 ^^^^^^^^^^^^^^^^^
 
 One of the interesting things about THR is the ability to do rate-limiting
-based on various criteria.
+based on various criteria.  The source code for these examples can be found in
+directory ``examples/limits``.
 
 Fixed limit values
 ''''''''''''''''''
@@ -108,3 +109,49 @@ Since each request has a different value for the ``Foo`` header, no limit is app
 
     $ ab -c10 -n10 -H "Foo: baz" http://127.0.0.1:8888/|grep 'Time taken'
     Time taken for tests:   5.051 seconds
+
+Statistics file
+'''''''''''''''
+
+THR keeps real-time statistics by default in ``/tmp/redis2http_stats.json``. You may watch this file while doing your tests to see what is going on:
+
+.. sourcecode:: js
+
+    $ cat /tmp/redis2http_stats.json 
+    {
+        "bus_reinject_counter": 12, 
+        "blocked_requests": 2, 
+        "running_requests": {
+            "1886432e05954a23b471fd76eb2e1fb4": {
+                "url": "http://localhost:9999/", 
+                "big_priority": 5, 
+                "method": "GET", 
+                "since_ms": 495
+            }, 
+            "13b6fc2a9d394d54ad55e7a432e306c9": {
+                "url": "http://localhost:9999/", 
+                "big_priority": 5, 
+                "method": "GET", 
+                "since_ms": 491
+            }
+        }, 
+        "expired_request_counter": 0, 
+        "running_bus_reinject_handler_number": 1, 
+        "epoch": 1437383921.08562, 
+        "stopping_mode": 0, 
+        "bus_reinject_queue_localhost:6379_size": 0, 
+        "total_request_counter": 6, 
+        "running_request_redis_handler_number": 1, 
+        "counters": {
+            "limit_foo_header_globalblocks": 26, 
+            "limit_foo_header_globalvalue": 2, 
+            "limit_foo_header_limit": 2
+        }
+    }
+
+This shows you that six requests have been processed
+(``total_request_counter``), two requests are currently running
+(``running_requests``) and two requests are waiting to be processed
+(``blocked_requests``).
+The location of the statistics file can be customized with the ``--stats_file``
+option of the ``redis2http`` command.

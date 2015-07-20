@@ -10,7 +10,9 @@ THR - Tornado HTTP Router
 
 THR stands for *Tornado HTTP Router*, *Tornado HTTP over Redis* or *Toulouse HTTP Router*, your choice! It's an HTTP
 proxy based on Tornado and Redis allowing to do all sorts of things with your incoming HTTP traffic such as
-application-level QOS, request rewriting, etc.
+application-level QoS, request rewriting, etc.
+
+This project is hosted on GitHub: https://github.com/thefab/thr
 
 
 .. toctree::
