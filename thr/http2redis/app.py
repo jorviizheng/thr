@@ -10,6 +10,7 @@ from tornado.web import RequestHandler, Application, url
 from tornado.options import define, options, parse_command_line
 import tornadis
 import time
+import six
 import signal
 import functools
 import datetime
@@ -168,12 +169,18 @@ class Handler(RequestHandler):
                         'creation_time': time.time(),
                         'request_id': exchange.request_id
                     })
-                yield redis.call('LPUSH', exchange.redis_queue,
-                                 serialized_request)
+                lpush_res = yield redis.call('LPUSH', exchange.redis_queue,
+                                             serialized_request)
+                if not isinstance(lpush_res, six.integer_types):
+                    yield Rules.execute_output_actions(exchange)
+                    self.return_http_reply(exchange, force_status=500,
+                                           force_body="can't connect to bus")
+                    return
+
                 before = datetime.datetime.now()
                 while True:
                     result = yield redis.call('BRPOP', response_key, 1)
-                    if result:
+                    if not isinstance(result, tornadis.ConnectionError):
                         self.update_exchange_from_response_message(exchange,
                                                                    result[1])
                         yield Rules.execute_output_actions(exchange)
