@@ -26,7 +26,7 @@ from thr.redis2http.counter import get_counter, get_counter_blocks
 from thr.redis2http.counter import get_global_counter_name
 from thr.redis2http.counter import conditional_incr_counters
 from thr.utils import serialize_http_response, timedelta_total_ms
-from thr.utils import UnixResolver
+from thr.utils import UnixResolver, format_future_exception
 from thr import DEFAULT_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LIFETIME, BRPOP_TIMEOUT
 from thr import DEFAULT_MAXIMUM_LOCAL_QUEUE_LIFETIME_MS
@@ -240,7 +240,9 @@ def process_request(exchange, before):
     pipeline.stack_call("EXPIRE", response_key, options.timeout)
     with (yield redis_pool.connected_client()) as redis:
         redis_res = yield redis.call(pipeline)
-        if len(redis_res) != 2 or \
+        if redis_res is None or \
+                isinstance(redis_res, tornadis.ConnectionError) or \
+                len(redis_res) != 2 or \
                 not isinstance(redis_res[0], six.integer_types) or \
                 not isinstance(redis_res[1], six.integer_types):
             logger.warning("can't send the result on %s for "
@@ -304,19 +306,17 @@ def bus_reinject_handler(host=None, port=None, unix_domain_socket=None,
         result = yield redis.call('LPUSH', exchange.redis_queue,
                                   exchange.serialized_request)
         if not isinstance(result, six.integer_types):
+            redis_string = format_redis_server(host, port,
+                                               unix_domain_socket,
+                                               queues=[exchange.redis_queue])
             if stopping >= 4:
                 logger.warning("can't reinject request #%s on "
                                "%s but we are stopping "
-                               "=> loosing requests", rid,
-                               format_redis_server(host, port,
-                                                   unix_domain_socket,
-                                                   [exchange.redis_queue]))
+                               "=> loosing requests", rid, redis_string)
                 break
             logger.warning("can't reinject request #%s on %s "
                            "=> sleeping 5s and re-queueing the request",
-                           rid, format_redis_server(host, port,
-                                                    unix_domain_socket,
-                                                    [exchange.redis_queue]))
+                           rid, redis_string)
             yield tornado.gen.sleep(5)
             queue.put_nowait((priority, exchange))
         else:
@@ -437,9 +437,7 @@ def process_request_callback(rid, counters, future):
         reinject_blocking_queue(counter)
     exception = future.exception()
     if exception is not None:
-        logger.warning("exception: %s catched during process execution",
-                       exception)
-        raise exception
+        logging.exception(format_future_exception(future))
 
 
 def write_stats():
@@ -487,7 +485,7 @@ def write_stats():
 def stop_loop(future):
     exc = future.exception()
     if exc is not None:
-        raise exc
+        logging.exception(format_future_exception(future))
     _stop_loop()
 
 

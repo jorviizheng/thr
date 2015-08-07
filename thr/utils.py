@@ -6,6 +6,7 @@
 
 import uuid
 import base64
+import traceback
 import json
 import six
 import socket
@@ -383,3 +384,12 @@ class UnixResolver(Resolver):
             raise Return([(socket.AF_UNIX, unix_socket_path)])
         result = yield self.resolver.resolve(host, port, *args, **kwargs)
         raise Return(result)
+
+
+def format_future_exception(future):
+    exception = future.exception()
+    if exception is not None:
+        exc_info = future.exc_info()
+        res = "Exception found in future: %s\n" % str(exception)
+        res = res + "".join(traceback.format_exception(*exc_info))
+        return res
