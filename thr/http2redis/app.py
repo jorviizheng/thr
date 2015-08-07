@@ -180,7 +180,7 @@ class Handler(RequestHandler):
                 before = datetime.datetime.now()
                 while True:
                     result = yield redis.call('BRPOP', response_key, 1)
-                    if not isinstance(result, tornadis.ConnectionError):
+                    if result and not isinstance(result, tornadis.ConnectionError):
                         self.update_exchange_from_response_message(exchange,
                                                                    result[1])
                         yield Rules.execute_output_actions(exchange)
